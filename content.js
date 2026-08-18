@@ -1,22 +1,52 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "panoptoCourseFilterV7";
+  const STORAGE_KEY = "panoptoCourseFilterV8";
 
   const state = {
+    // Persistent database of courses we've discovered.
     entries: [],
+
+    // Courses currently selected in the filter.
     selected: [],
+
+    // Courses saved as "Current Classes".
     currentClasses: [],
+
     enabled: true,
+
     collapsedSemesters: {},
-    loadingMatches: false
+
+    // True while we are intentionally forcing Panopto
+    // to load more recordings.
+    loadingMatches: false,
+
+    // Prevents our observer from repeatedly doing expensive
+    // work while Panopto is changing the page.
+    scanQueued: false,
+
+    // Used to notice SPA navigation.
+    lastUrl: location.href
   };
 
+
+  // =========================================================
+  // COURSE REGEX
+  //
+  // Auburn uses ONLY:
+  //   Fall
+  //   Spring
+  //   Summer
+  //
+  // Winter is intentionally NOT included.
+  // =========================================================
+
   const FORWARD_RE =
-    /\b(Fall|Spring|Summer|Winter)\s+(\d{4})\s*[-–—]\s*([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\b/gi;
+    /\b(Fall|Spring|Summer)\s+(\d{4})\s*[-–—]\s*([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\b/gi;
+
 
   const REVERSE_RE =
-    /\b([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\s*\(\s*(Fall|Spring|Summer|Winter)\s+(\d{4})\s*\)/gi;
+    /\b([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\s*\(\s*(Fall|Spring|Summer)\s+(\d{4})\s*\)/gi;
 
 
   // =========================================================
@@ -29,12 +59,21 @@
       .trim();
   }
 
+
   function entryLabel(entry) {
     return `${entry.term} ${entry.year} — ${entry.course}`;
   }
 
+
   function semesterKey(entry) {
     return `${entry.term} ${entry.year}`;
+  }
+
+
+  function sleep(ms) {
+    return new Promise(resolve =>
+      setTimeout(resolve, ms)
+    );
   }
 
 
@@ -49,6 +88,11 @@
 
     let match;
 
+
+    // -------------------------------------------------------
+    // Fall 2025 - COMP - 5710
+    // -------------------------------------------------------
+
     FORWARD_RE.lastIndex = 0;
 
     while ((match = FORWARD_RE.exec(text))) {
@@ -56,7 +100,8 @@
         match[1].charAt(0).toUpperCase() +
         match[1].slice(1).toLowerCase();
 
-      const year = match[2];
+      const year =
+        match[2];
 
       const subject =
         match[3].toUpperCase();
@@ -69,12 +114,14 @@
           ? match[5].toUpperCase()
           : "";
 
+
       const course =
         `${subject}-${number}${
           section
             ? "-" + section
             : ""
         }`;
+
 
       results.push({
         key: `${term} ${year}|${course}`,
@@ -84,6 +131,10 @@
       });
     }
 
+
+    // -------------------------------------------------------
+    // COMP - 5710 (Fall 2025)
+    // -------------------------------------------------------
 
     REVERSE_RE.lastIndex = 0;
 
@@ -99,6 +150,7 @@
           ? match[3].toUpperCase()
           : "";
 
+
       const term =
         match[4].charAt(0).toUpperCase() +
         match[4].slice(1).toLowerCase();
@@ -106,12 +158,14 @@
       const year =
         match[5];
 
+
       const course =
         `${subject}-${number}${
           section
             ? "-" + section
             : ""
         }`;
+
 
       results.push({
         key: `${term} ${year}|${course}`,
@@ -121,7 +175,54 @@
       });
     }
 
+
     return results;
+  }
+
+
+  // =========================================================
+  // SORTING
+  // =========================================================
+
+  function sortEntries(entries) {
+    const termOrder = {
+      Fall: 3,
+      Summer: 2,
+      Spring: 1
+    };
+
+
+    return [...entries].sort(
+      (a, b) => {
+        const ay =
+          Number(a.year);
+
+        const by =
+          Number(b.year);
+
+
+        if (ay !== by) {
+          return by - ay;
+        }
+
+
+        const at =
+          termOrder[a.term] || 0;
+
+        const bt =
+          termOrder[b.term] || 0;
+
+
+        if (at !== bt) {
+          return bt - at;
+        }
+
+
+        return a.course.localeCompare(
+          b.course
+        );
+      }
+    );
   }
 
 
@@ -130,23 +231,27 @@
   //
   // IMPORTANT:
   //
-  // This MERGES discoveries into the existing database.
-  // It does NOT replace the database with whatever happens
-  // to be visible on the current Panopto tab.
+  // This MERGES courses into the persistent database.
+  // It never removes courses merely because the current
+  // Panopto tab doesn't happen to show them.
   // =========================================================
 
   async function discoverEntries() {
-    const found = new Map();
+    const found =
+      new Map();
+
 
     document
       .querySelectorAll(
         "a, span, p, [role='treeitem'], [class*='card'], [class*='Card']"
       )
       .forEach(element => {
-        const text = normalize(
-          element.innerText ||
-          element.textContent
-        );
+        const text =
+          normalize(
+            element.innerText ||
+            element.textContent
+          );
+
 
         if (
           text.length < 8 ||
@@ -155,82 +260,75 @@
           return;
         }
 
-        parseEntries(text).forEach(entry => {
-          found.set(
-            entry.key,
-            entry
-          );
-        });
+
+        parseEntries(text)
+          .forEach(entry => {
+            found.set(
+              entry.key,
+              entry
+            );
+          });
       });
 
 
-    /*
-     * MERGE discovered courses with the persistent course list.
-     */
+    if (
+      found.size === 0
+    ) {
+      return 0;
+    }
+
+
     const merged =
-      new Map(
-        state.entries.map(entry => [
+      new Map();
+
+
+    state.entries.forEach(
+      entry => {
+        merged.set(
           entry.key,
           entry
-        ])
+        );
+      }
+    );
+
+
+    found.forEach(
+      (entry, key) => {
+        merged.set(
+          key,
+          entry
+        );
+      }
+    );
+
+
+    const oldKeys =
+      new Set(
+        state.entries.map(
+          entry => entry.key
+        )
       );
-
-
-    found.forEach((entry, key) => {
-      merged.set(key, entry);
-    });
-
-
-    const oldLength =
-      state.entries.length;
 
 
     state.entries =
-      [...merged.values()].sort(
-        (a, b) => {
-          const ay =
-            Number(a.year);
-
-          const by =
-            Number(b.year);
-
-          if (ay !== by) {
-            return by - ay;
-          }
-
-          const termOrder = {
-            Fall: 4,
-            Summer: 3,
-            Spring: 2,
-            Winter: 1
-          };
-
-          if (
-            termOrder[a.term] !==
-            termOrder[b.term]
-          ) {
-            return (
-              termOrder[b.term] -
-              termOrder[a.term]
-            );
-          }
-
-          return a.course.localeCompare(
-            b.course
-          );
-        }
+      sortEntries(
+        [...merged.values()]
       );
 
 
-    /*
-     * Only save if something new was discovered.
-     */
-    if (
-      state.entries.length !==
-      oldLength
-    ) {
+    const added =
+      state.entries.some(
+        entry =>
+          !oldKeys.has(
+            entry.key
+          )
+      );
+
+
+    if (added) {
       await saveState();
     }
+
 
     return found.size;
   }
@@ -241,14 +339,20 @@
   // =========================================================
 
   function findRecordingCards() {
-    const cards = new Set();
+    const cards =
+      new Set();
+
 
     document
-      .querySelectorAll("a[href]")
+      .querySelectorAll(
+        "a[href]"
+      )
       .forEach(link => {
         const href =
-          link.getAttribute("href") ||
-          "";
+          link.getAttribute(
+            "href"
+          ) || "";
+
 
         if (
           !/viewer|session/i.test(
@@ -258,7 +362,10 @@
           return;
         }
 
-        let parent = link;
+
+        let parent =
+          link;
+
 
         for (
           let i = 0;
@@ -271,8 +378,10 @@
               parent.textContent
             );
 
+
           const rect =
             parent.getBoundingClientRect();
+
 
           if (
             rect.width > 150 &&
@@ -286,16 +395,24 @@
                 "a[href]"
               );
 
-            if (links.length <= 4) {
-              cards.add(parent);
+
+            if (
+              links.length <= 4
+            ) {
+              cards.add(
+                parent
+              );
+
               break;
             }
           }
+
 
           parent =
             parent.parentElement;
         }
       });
+
 
     return [...cards];
   }
@@ -318,6 +435,7 @@
       return true;
     }
 
+
     return getCardEntries(
       card
     ).some(entry =>
@@ -339,15 +457,16 @@
       return;
     }
 
+
     const cards =
       findRecordingCards();
 
+
     let visibleCount = 0;
 
+
     cards.forEach(card => {
-      /*
-       * Clear any previous filtering.
-       */
+      // Always reset previous filtering.
       card.style.removeProperty(
         "display"
       );
@@ -375,17 +494,16 @@
 
 
       if (
-        cardMatchesSelection(card)
+        cardMatchesSelection(
+          card
+        )
       ) {
+        // Keep matching card.
         card.style.display = "";
         visibleCount++;
       } else {
-        /*
-         * display:none removes the card from the layout,
-         * preventing blank spaces.
-         */
-        card.style.display =
-          "none";
+        // Remove it completely from layout.
+        card.style.display = "none";
       }
     });
 
@@ -427,9 +545,6 @@
   // =========================================================
 
   async function loadState() {
-    /*
-     * Try the new storage key first.
-     */
     let result =
       await chrome.storage.local.get(
         STORAGE_KEY
@@ -437,23 +552,43 @@
 
 
     /*
-     * If this is the first run after the update,
-     * migrate the previous V6 database.
+     * Migrate from the previous versions.
      */
     if (
       !result[STORAGE_KEY]
     ) {
-      const old =
+      const v7 =
+        await chrome.storage.local.get(
+          "panoptoCourseFilterV7"
+        );
+
+
+      if (
+        v7.panoptoCourseFilterV7
+      ) {
+        result = {
+          [STORAGE_KEY]:
+            v7.panoptoCourseFilterV7
+        };
+      }
+    }
+
+
+    if (
+      !result[STORAGE_KEY]
+    ) {
+      const v6 =
         await chrome.storage.local.get(
           "panoptoCourseFilterV6"
         );
 
+
       if (
-        old.panoptoCourseFilterV6
+        v6.panoptoCourseFilterV6
       ) {
         result = {
           [STORAGE_KEY]:
-            old.panoptoCourseFilterV6
+            v6.panoptoCourseFilterV6
         };
       }
     }
@@ -477,14 +612,6 @@
         : [];
 
 
-    state.currentClasses =
-      Array.isArray(
-        state.currentClasses
-      )
-        ? state.currentClasses
-        : [];
-
-
     state.selected =
       Array.isArray(
         state.selected
@@ -493,9 +620,55 @@
         : [];
 
 
+    state.currentClasses =
+      Array.isArray(
+        state.currentClasses
+      )
+        ? state.currentClasses
+        : [];
+
+
     state.collapsedSemesters =
       state.collapsedSemesters ||
       {};
+
+
+    /*
+     * Remove any accidental Winter entries from previous
+     * versions.
+     */
+    state.entries =
+      state.entries.filter(
+        entry =>
+          entry.term === "Fall" ||
+          entry.term === "Spring" ||
+          entry.term === "Summer"
+      );
+
+
+    /*
+     * Remove selected/current references to Winter entries.
+     */
+    const validKeys =
+      new Set(
+        state.entries.map(
+          entry => entry.key
+        )
+      );
+
+
+    state.selected =
+      state.selected.filter(
+        key =>
+          validKeys.has(key)
+      );
+
+
+    state.currentClasses =
+      state.currentClasses.filter(
+        key =>
+          validKeys.has(key)
+      );
 
 
     state.loadingMatches =
@@ -577,12 +750,14 @@
     const cards =
       findRecordingCards();
 
+
     if (
       !state.enabled ||
       state.selected.length === 0
     ) {
       return cards.length;
     }
+
 
     return cards.filter(
       card =>
@@ -594,7 +769,12 @@
 
 
   // =========================================================
-  // AUTOMATIC LOADING
+  // LOAD MATCHING RECORDINGS
+  //
+  // This deliberately works on the CURRENT Panopto tab.
+  //
+  // It does not assume that a saved course means recordings
+  // are already loaded.
   // =========================================================
 
   async function loadMatchingRecordings() {
@@ -619,11 +799,12 @@
     state.loadingMatches =
       true;
 
+
     updateLoadingUI();
 
 
     /*
-     * Remove filtering while Panopto loads.
+     * Panopto needs the cards visible while it lazy-loads.
      */
     temporarilyShowEverything();
 
@@ -632,18 +813,8 @@
       window.scrollY;
 
 
-    const wait =
-      ms =>
-        new Promise(resolve =>
-          setTimeout(
-            resolve,
-            ms
-          )
-        );
-
-
     const MAX_ROUNDS =
-      80;
+      100;
 
 
     let previousCount =
@@ -668,22 +839,41 @@
         }
 
 
+        /*
+         * Make sure our filter is not hiding cards that
+         * Panopto needs to see.
+         */
         temporarilyShowEverything();
 
 
+        /*
+         * Scroll to the bottom of the CURRENT page.
+         *
+         * This works for Home and Shared with Me because we
+         * are not navigating away from the current Panopto
+         * view.
+         */
         window.scrollTo({
           top:
-            document.documentElement
-              .scrollHeight,
+            Math.max(
+              document.documentElement
+                .scrollHeight,
+              document.body
+                .scrollHeight
+            ),
 
           behavior:
             "instant"
         });
 
 
-        await wait(400);
+        await sleep(500);
 
-        await wait(1000);
+
+        /*
+         * Give Panopto time to fetch and render recordings.
+         */
+        await sleep(1200);
 
 
         const newCount =
@@ -701,12 +891,17 @@
           newCount >
           previousCount
         ) {
-          unchangedRounds = 0;
-
           previousCount =
             newCount;
 
-          await wait(300);
+          unchangedRounds =
+            0;
+
+          /*
+           * New cards appeared. Give them a moment to
+           * settle before another scroll.
+           */
+          await sleep(500);
 
           continue;
         }
@@ -715,26 +910,35 @@
         unchangedRounds++;
 
 
+        /*
+         * Panopto sometimes needs a few bottom hits before
+         * deciding there is nothing else to load.
+         */
         if (
-          unchangedRounds >= 5
+          unchangedRounds >= 6
         ) {
           break;
         }
 
 
-        await wait(500);
+        await sleep(700);
       }
+
 
     } finally {
       state.loadingMatches =
         false;
 
 
+      /*
+       * Discover any course information that became visible
+       * during loading, but MERGE it into the database.
+       */
       await discoverEntries();
 
 
       /*
-       * Restore filtering only after loading is done.
+       * Now filter the recordings actually loaded in THIS tab.
        */
       applyFilter();
 
@@ -752,7 +956,7 @@
 
 
       showStatus(
-        `Finished loading. ${countMatchingCards()} matching recordings.`
+        `Finished loading. ${countMatchingCards()} matching recordings found on this page.`
       );
     }
   }
@@ -816,7 +1020,7 @@
             "pcf-status-visible"
           );
         },
-        4500
+        5000
       );
   }
 
@@ -1050,16 +1254,18 @@
 
         state.selected =
           state.entries
-            .filter(entry =>
-              entry.term ===
-                current.term &&
-              Number(
-                entry.year
-              ) ===
-                current.year
+            .filter(
+              entry =>
+                entry.term ===
+                  current.term &&
+                Number(
+                  entry.year
+                ) ===
+                  current.year
             )
-            .map(entry =>
-              entry.key
+            .map(
+              entry =>
+                entry.key
             );
 
 
@@ -1097,6 +1303,7 @@
 
         updatePanel();
 
+
         showStatus(
           `Saved ${state.currentClasses.length} current classes.`
         );
@@ -1113,6 +1320,7 @@
         await saveState();
 
         updatePanel();
+
 
         showStatus(
           "Saved current classes cleared."
@@ -1133,6 +1341,7 @@
         await discoverEntries();
 
         applyFilter();
+
 
         showStatus(
           `Scan complete. ${state.entries.length} courses in database.`
@@ -1191,8 +1400,6 @@
           )
         );
       })
-
-
       .forEach(entry => {
         const group =
           semesterKey(entry);
@@ -1305,10 +1512,11 @@
 
 
             const allSelected =
-              keys.every(key =>
-                state.selected.includes(
-                  key
-                )
+              keys.every(
+                key =>
+                  state.selected.includes(
+                    key
+                  )
               );
 
 
@@ -1552,6 +1760,7 @@
             "pcf-hidden"
           );
 
+
         updatePanel();
       };
 
@@ -1566,12 +1775,6 @@
   // SMART RESCAN
   // =========================================================
 
-  let scanTimer;
-
-  let lastUrl =
-    location.href;
-
-
   function scheduleRescan(
     delay = 300
   ) {
@@ -1582,20 +1785,30 @@
     }
 
 
-    clearTimeout(
-      scanTimer
+    if (
+      state.scanQueued
+    ) {
+      return;
+    }
+
+
+    state.scanQueued =
+      true;
+
+
+    setTimeout(
+      async () => {
+        state.scanQueued =
+          false;
+
+
+        await discoverEntries();
+
+
+        applyFilter();
+      },
+      delay
     );
-
-
-    scanTimer =
-      setTimeout(
-        async () => {
-          await discoverEntries();
-
-          applyFilter();
-        },
-        delay
-      );
   }
 
 
@@ -1611,55 +1824,50 @@
   }
 
 
-  /*
-   * Panopto is a SPA, so URL changes may happen without a
-   * normal page reload.
-   */
+  // =========================================================
+  // WATCH SPA NAVIGATION
+  // =========================================================
+
   function watchForPageChanges() {
     setInterval(
       () => {
         if (
           location.href !==
-          lastUrl
+          state.lastUrl
         ) {
-          lastUrl =
+          state.lastUrl =
             location.href;
 
-          /*
-           * Give Panopto time to render the new tab.
-           */
-          scheduleRescan(
-            500
-          );
 
           /*
-           * Then do a few additional scans because Shared
-           * With Me may populate asynchronously.
+           * Give Panopto time to replace the page content.
+           */
+          scheduleRescan(
+            700
+          );
+
+
+          /*
+           * Shared With Me can populate asynchronously,
+           * so perform several additional discovery passes.
            */
           setTimeout(
-            () => {
-              scheduleRescan(
-                100
-              );
-            },
+            () =>
+              scheduleRescan(0),
             1500
           );
 
+
           setTimeout(
-            () => {
-              scheduleRescan(
-                100
-              );
-            },
+            () =>
+              scheduleRescan(0),
             3000
           );
 
+
           setTimeout(
-            () => {
-              scheduleRescan(
-                100
-              );
-            },
+            () =>
+              scheduleRescan(0),
             5000
           );
         }
@@ -1683,7 +1891,8 @@
 
 
     /*
-     * First scan discovers courses from the current page.
+     * Discover whatever courses are visible immediately.
+     * These get MERGED with the existing database.
      */
     await discoverEntries();
 
@@ -1692,7 +1901,7 @@
 
 
     /*
-     * Watch Panopto's dynamically generated content.
+     * Watch Panopto's dynamically rendered content.
      */
     const observer =
       new MutationObserver(
@@ -1710,7 +1919,7 @@
 
 
     /*
-     * Scrolling can expose additional Panopto content.
+     * Scrolling can expose additional course/recording data.
      */
     window.addEventListener(
       "scroll",
@@ -1728,18 +1937,19 @@
 
 
     /*
-     * Extra initial scans in case Panopto hasn't finished
-     * rendering its first page yet.
+     * Initial delayed scans.
      */
     setTimeout(
       () => scheduleRescan(0),
       1000
     );
 
+
     setTimeout(
       () => scheduleRescan(0),
       2500
     );
+
 
     setTimeout(
       () => scheduleRescan(0),
@@ -1748,10 +1958,15 @@
   }
 
 
+  // =========================================================
+  // START
+  // =========================================================
+
   if (
     location.hostname ===
     "auburn.hosted.panopto.com"
   ) {
     init();
   }
+
 })();
