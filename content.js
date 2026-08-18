@@ -18,6 +18,11 @@
   const REVERSE_RE =
     /\b([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\s*\(\s*(Fall|Spring|Summer|Winter)\s+(\d{4})\s*\)/gi;
 
+
+  // =========================================================
+  // HELPERS
+  // =========================================================
+
   function normalize(text) {
     return (text || "")
       .replace(/\s+/g, " ")
@@ -32,11 +37,10 @@
     return `${entry.term} ${entry.year}`;
   }
 
-  /*
-   * ---------------------------------------------------------
-   * COURSE PARSING
-   * ---------------------------------------------------------
-   */
+
+  // =========================================================
+  // COURSE PARSING
+  // =========================================================
 
   function parseEntries(text) {
     const results = [];
@@ -101,11 +105,10 @@
     return results;
   }
 
-  /*
-   * ---------------------------------------------------------
-   * COURSE DISCOVERY
-   * ---------------------------------------------------------
-   */
+
+  // =========================================================
+  // DISCOVER COURSES
+  // =========================================================
 
   function discoverEntries() {
     const found = new Map();
@@ -161,11 +164,10 @@
     });
   }
 
-  /*
-   * ---------------------------------------------------------
-   * RECORDING CARDS
-   * ---------------------------------------------------------
-   */
+
+  // =========================================================
+  // RECORDING CARDS
+  // =========================================================
 
   function findRecordingCards() {
     const cards = new Set();
@@ -218,6 +220,7 @@
     return [...cards];
   }
 
+
   function getCardEntries(card) {
     return parseEntries(
       normalize(
@@ -226,6 +229,7 @@
       )
     );
   }
+
 
   function cardMatchesSelection(card) {
     if (state.selected.length === 0) {
@@ -237,18 +241,30 @@
     );
   }
 
-  /*
-   * ---------------------------------------------------------
-   * FILTERING
-   * ---------------------------------------------------------
-   */
+
+  // =========================================================
+  // FILTER
+  // =========================================================
 
   function applyFilter() {
+    /*
+     * Do not filter while Panopto is loading more recordings.
+     * Panopto needs the complete list available to its own
+     * lazy-loading system.
+     */
+    if (state.loadingMatches) {
+      return;
+    }
+
     const cards = findRecordingCards();
 
     let visibleCount = 0;
 
     cards.forEach(card => {
+      /*
+       * Always reset everything first.
+       * This is important when changing selections.
+       */
       card.style.removeProperty("display");
       card.style.removeProperty("visibility");
       card.style.removeProperty("opacity");
@@ -263,26 +279,46 @@
       }
 
       if (cardMatchesSelection(card)) {
+        /*
+         * Matching recording.
+         */
+        card.style.display = "";
         visibleCount++;
       } else {
         /*
-         * Keep the card in the layout.
-         * Panopto's lazy loader may depend on this.
+         * IMPORTANT:
+         *
+         * Use display:none rather than visibility:hidden.
+         *
+         * visibility:hidden leaves an empty space in the
+         * Panopto grid. display:none removes the card from
+         * the layout completely.
          */
-        card.style.visibility = "hidden";
-        card.style.opacity = "0";
-        card.style.pointerEvents = "none";
+        card.style.display = "none";
       }
     });
 
     updatePanel(visibleCount);
   }
 
-  /*
-   * ---------------------------------------------------------
-   * STORAGE
-   * ---------------------------------------------------------
-   */
+
+  // =========================================================
+  // SHOW EVERYTHING
+  // =========================================================
+
+  function temporarilyShowEverything() {
+    findRecordingCards().forEach(card => {
+      card.style.removeProperty("display");
+      card.style.removeProperty("visibility");
+      card.style.removeProperty("opacity");
+      card.style.removeProperty("pointer-events");
+    });
+  }
+
+
+  // =========================================================
+  // STORAGE
+  // =========================================================
 
   async function loadState() {
     const result =
@@ -311,6 +347,7 @@
     state.loadingMatches = false;
   }
 
+
   async function saveState() {
     await chrome.storage.local.set({
       [STORAGE_KEY]: {
@@ -324,16 +361,19 @@
     });
   }
 
-  /*
-   * ---------------------------------------------------------
-   * CURRENT SEMESTER
-   * ---------------------------------------------------------
-   */
+
+  // =========================================================
+  // CURRENT SEMESTER
+  // =========================================================
 
   function getCurrentTerm() {
     const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
+
+    const month =
+      now.getMonth() + 1;
+
+    const year =
+      now.getFullYear();
 
     if (month >= 1 && month <= 5) {
       return {
@@ -355,11 +395,10 @@
     };
   }
 
-  /*
-   * ---------------------------------------------------------
-   * RECORDING COUNT
-   * ---------------------------------------------------------
-   */
+
+  // =========================================================
+  // COUNT MATCHING CARDS
+  // =========================================================
 
   function countMatchingCards() {
     const cards = findRecordingCards();
@@ -376,11 +415,10 @@
     ).length;
   }
 
-  /*
-   * ---------------------------------------------------------
-   * AUTOMATIC LAZY LOADING
-   * ---------------------------------------------------------
-   */
+
+  // =========================================================
+  // AUTOMATIC LOADING
+  // =========================================================
 
   async function loadMatchingRecordings() {
     if (state.loadingMatches) {
@@ -391,22 +429,33 @@
       showStatus(
         "Select at least one course first."
       );
+
       return;
     }
 
     state.loadingMatches = true;
+
     updateLoadingUI();
 
-    const originalScroll = window.scrollY;
+    /*
+     * Remove our filtering before Panopto starts loading.
+     */
+    temporarilyShowEverything();
 
-    let unchangedRounds = 0;
-
-    const MAX_ROUNDS = 60;
+    const originalScroll =
+      window.scrollY;
 
     const wait = ms =>
       new Promise(resolve =>
         setTimeout(resolve, ms)
       );
+
+    const MAX_ROUNDS = 80;
+
+    let previousCount =
+      findRecordingCards().length;
+
+    let unchangedRounds = 0;
 
     try {
       for (
@@ -418,47 +467,34 @@
           break;
         }
 
-        discoverEntries();
-        applyFilter();
+        /*
+         * Make absolutely sure our filter is not interfering
+         * with Panopto's loading.
+         */
+        temporarilyShowEverything();
 
-        const cardsBefore =
-          findRecordingCards();
+        /*
+         * Scroll the actual page to the bottom.
+         */
+        window.scrollTo({
+          top:
+            document.documentElement
+              .scrollHeight,
+          behavior: "instant"
+        });
 
-        const previousCount =
-          cardsBefore.length;
+        /*
+         * Let the scroll event fire.
+         */
+        await wait(400);
 
-        const cards =
-          findRecordingCards();
-
-        if (cards.length > 0) {
-          const lastCard =
-            cards[cards.length - 1];
-
-          lastCard.scrollIntoView({
-            behavior: "instant",
-            block: "end"
-          });
-        } else {
-          window.scrollTo({
-            top:
-              document.documentElement
-                .scrollHeight,
-            behavior: "instant"
-          });
-        }
-
-        await wait(500);
-        await wait(700);
-
-        discoverEntries();
-
-        const cardsAfter =
-          findRecordingCards();
+        /*
+         * Give Panopto time to request/render more videos.
+         */
+        await wait(1000);
 
         const newCount =
-          cardsAfter.length;
-
-        applyFilter();
+          findRecordingCards().length;
 
         updateLoadingUI(
           round + 1,
@@ -467,36 +503,44 @@
 
         if (newCount > previousCount) {
           unchangedRounds = 0;
-        } else {
-          unchangedRounds++;
+          previousCount = newCount;
 
-          if (unchangedRounds >= 4) {
-            window.scrollTo({
-              top:
-                document.documentElement
-                  .scrollHeight,
-              behavior: "instant"
-            });
+          await wait(300);
 
-            await wait(1200);
-
-            const finalCount =
-              findRecordingCards().length;
-
-            if (finalCount <= newCount) {
-              break;
-            }
-
-            unchangedRounds = 0;
-          }
+          continue;
         }
+
+        unchangedRounds++;
+
+        /*
+         * Require several consecutive rounds with no new
+         * recordings before assuming we've reached the end.
+         */
+        if (unchangedRounds >= 5) {
+          break;
+        }
+
+        await wait(500);
       }
     } finally {
       state.loadingMatches = false;
 
+      /*
+       * Discover newly loaded course information.
+       */
       discoverEntries();
+
+      /*
+       * NOW restore the filter.
+       *
+       * Because nonmatching cards use display:none, they no
+       * longer leave blank spaces in the grid.
+       */
       applyFilter();
 
+      /*
+       * Return to where the user started.
+       */
       window.scrollTo({
         top: originalScroll,
         behavior: "instant"
@@ -505,13 +549,18 @@
       updateLoadingUI();
 
       showStatus(
-        "Finished loading available recordings."
+        `Finished loading. ${countMatchingCards()} matching recordings.`
       );
     }
   }
 
+
   function stopLoadingMatches() {
     state.loadingMatches = false;
+
+    discoverEntries();
+
+    applyFilter();
 
     updateLoadingUI();
 
@@ -520,41 +569,44 @@
     );
   }
 
-  /*
-   * ---------------------------------------------------------
-   * STATUS
-   * ---------------------------------------------------------
-   */
+
+  // =========================================================
+  // STATUS
+  // =========================================================
 
   let statusTimer;
 
   function showStatus(message) {
     const status =
-      document.getElementById("pcf-status");
+      document.getElementById(
+        "pcf-status"
+      );
 
     if (!status) {
       return;
     }
 
-    status.textContent = message;
+    status.textContent =
+      message;
+
     status.classList.add(
       "pcf-status-visible"
     );
 
     clearTimeout(statusTimer);
 
-    statusTimer = setTimeout(() => {
-      status.classList.remove(
-        "pcf-status-visible"
-      );
-    }, 4000);
+    statusTimer =
+      setTimeout(() => {
+        status.classList.remove(
+          "pcf-status-visible"
+        );
+      }, 4500);
   }
 
-  /*
-   * ---------------------------------------------------------
-   * LOADING BUTTON
-   * ---------------------------------------------------------
-   */
+
+  // =========================================================
+  // LOADING UI
+  // =========================================================
 
   function updateLoadingUI(
     round = 0,
@@ -583,26 +635,27 @@
 
       button.onclick =
         stopLoadingMatches;
-    } else {
-      button.textContent =
-        "🔎 Load Matching Recordings";
 
-      button.classList.remove(
-        "pcf-loading"
-      );
-
-      button.disabled = false;
-
-      button.onclick =
-        loadMatchingRecordings;
+      return;
     }
+
+    button.textContent =
+      "🔎 Load Matching Recordings";
+
+    button.classList.remove(
+      "pcf-loading"
+    );
+
+    button.disabled = false;
+
+    button.onclick =
+      loadMatchingRecordings;
   }
 
-  /*
-   * ---------------------------------------------------------
-   * PANEL
-   * ---------------------------------------------------------
-   */
+
+  // =========================================================
+  // PANEL
+  // =========================================================
 
   function createPanel() {
     if (
@@ -616,7 +669,8 @@
     const panel =
       document.createElement("div");
 
-    panel.id = "pcf-panel";
+    panel.id =
+      "pcf-panel";
 
     panel.innerHTML = `
       <div class="pcf-header">
@@ -697,6 +751,7 @@
 
     document.body.appendChild(panel);
 
+
     document.getElementById(
       "pcf-close"
     ).onclick = () => {
@@ -705,9 +760,12 @@
       );
     };
 
+
     document.getElementById(
       "pcf-enabled"
-    ).checked = state.enabled;
+    ).checked =
+      state.enabled;
+
 
     document.getElementById(
       "pcf-enabled"
@@ -716,8 +774,10 @@
         event.target.checked;
 
       await saveState();
+
       applyFilter();
     };
+
 
     document.getElementById(
       "pcf-search"
@@ -725,14 +785,17 @@
       updatePanel();
     };
 
+
     document.getElementById(
       "pcf-none"
     ).onclick = async () => {
       state.selected = [];
 
       await saveState();
+
       applyFilter();
     };
+
 
     document.getElementById(
       "pcf-current-semester"
@@ -743,15 +806,20 @@
       state.selected =
         state.entries
           .filter(entry =>
-            entry.term === current.term &&
+            entry.term ===
+              current.term &&
             Number(entry.year) ===
               current.year
           )
-          .map(entry => entry.key);
+          .map(entry =>
+            entry.key
+          );
 
       await saveState();
+
       applyFilter();
     };
+
 
     document.getElementById(
       "pcf-use-current"
@@ -760,8 +828,10 @@
         [...state.currentClasses];
 
       await saveState();
+
       applyFilter();
     };
+
 
     document.getElementById(
       "pcf-save-current"
@@ -770,6 +840,7 @@
         [...state.selected];
 
       await saveState();
+
       updatePanel();
 
       showStatus(
@@ -777,12 +848,14 @@
       );
     };
 
+
     document.getElementById(
       "pcf-clear-current"
     ).onclick = async () => {
       state.currentClasses = [];
 
       await saveState();
+
       updatePanel();
 
       showStatus(
@@ -790,15 +863,18 @@
       );
     };
 
+
     document.getElementById(
       "pcf-load-matching"
     ).onclick =
       loadMatchingRecordings;
 
+
     document.getElementById(
       "pcf-refresh"
     ).onclick = () => {
       discoverEntries();
+
       applyFilter();
 
       showStatus(
@@ -806,14 +882,14 @@
       );
     };
 
+
     updateLoadingUI();
   }
 
-  /*
-   * ---------------------------------------------------------
-   * PANEL UPDATE
-   * ---------------------------------------------------------
-   */
+
+  // =========================================================
+  // UPDATE PANEL
+  // =========================================================
 
   function updatePanel(
     matchingCount = null
@@ -836,7 +912,9 @@
 
     list.innerHTML = "";
 
-    const groups = new Map();
+    const groups =
+      new Map();
+
 
     state.entries
       .filter(entry => {
@@ -860,8 +938,11 @@
           );
         }
 
-        groups.get(group).push(entry);
+        groups
+          .get(group)
+          .push(entry);
       });
+
 
     groups.forEach(
       (entries, semester) => {
@@ -895,6 +976,7 @@
           semesterHeader
         );
 
+
         const semesterCourses =
           document.createElement(
             "div"
@@ -908,11 +990,13 @@
             "none";
         }
 
+
         semesterHeader
           .querySelector(
             ".pcf-semester-toggle"
           )
-          .onclick = async () => {
+          .onclick =
+          async () => {
             state.collapsedSemesters[
               semester
             ] =
@@ -922,19 +1006,23 @@
               ];
 
             await saveState();
+
             updatePanel(
               matchingCount
             );
           };
 
+
         semesterHeader
           .querySelector(
             ".pcf-semester-all"
           )
-          .onclick = async () => {
+          .onclick =
+          async () => {
             const keys =
               entries.map(
-                entry => entry.key
+                entry =>
+                  entry.key
               );
 
             const allSelected =
@@ -948,7 +1036,9 @@
               state.selected =
                 state.selected.filter(
                   key =>
-                    !keys.includes(key)
+                    !keys.includes(
+                      key
+                    )
                 );
             } else {
               keys.forEach(key => {
@@ -965,8 +1055,10 @@
             }
 
             await saveState();
+
             applyFilter();
           };
+
 
         entries.forEach(entry => {
           const label =
@@ -976,6 +1068,7 @@
 
           label.className =
             "pcf-course";
+
 
           if (
             state.currentClasses.includes(
@@ -987,17 +1080,20 @@
             );
           }
 
+
           const checkbox =
             document.createElement(
               "input"
             );
 
-          checkbox.type = "checkbox";
+          checkbox.type =
+            "checkbox";
 
           checkbox.checked =
             state.selected.includes(
               entry.key
             );
+
 
           checkbox.onchange =
             async () => {
@@ -1015,13 +1111,16 @@
                 state.selected =
                   state.selected.filter(
                     key =>
-                      key !== entry.key
+                      key !==
+                      entry.key
                   );
               }
 
               await saveState();
+
               applyFilter();
             };
+
 
           label.append(
             checkbox,
@@ -1029,6 +1128,7 @@
               entry.course
             )
           );
+
 
           if (
             state.currentClasses.includes(
@@ -1043,17 +1143,23 @@
             star.className =
               "pcf-star";
 
-            star.textContent = " ★";
+            star.textContent =
+              " ★";
+
             star.title =
               "Saved as a current class";
 
-            label.appendChild(star);
+            label.appendChild(
+              star
+            );
           }
+
 
           semesterCourses.appendChild(
             label
           );
         });
+
 
         list.appendChild(
           semesterCourses
@@ -1061,10 +1167,12 @@
       }
     );
 
+
     if (matchingCount === null) {
       matchingCount =
         countMatchingCards();
     }
+
 
     const selectedCount =
       state.selected.length;
@@ -1072,10 +1180,12 @@
     const currentCount =
       state.currentClasses.length;
 
+
     const countElement =
       document.getElementById(
         "pcf-count"
       );
+
 
     countElement.innerHTML = `
       <div>
@@ -1089,21 +1199,22 @@
         currentCount > 0
           ? `
             <div class="pcf-saved-count">
-              ⭐ ${currentCount} saved current
+              ⭐ ${currentCount}
+              saved current
             </div>
           `
           : ""
       }
     `;
 
+
     updateLoadingUI();
   }
 
-  /*
-   * ---------------------------------------------------------
-   * LAUNCHER
-   * ---------------------------------------------------------
-   */
+
+  // =========================================================
+  // LAUNCHER
+  // =========================================================
 
   function createLauncher() {
     if (
@@ -1125,9 +1236,12 @@
     button.textContent =
       "🎓 Courses";
 
+
     button.onclick = () => {
       document
-        .getElementById("pcf-panel")
+        .getElementById(
+          "pcf-panel"
+        )
         .classList.remove(
           "pcf-hidden"
         );
@@ -1135,45 +1249,60 @@
       updatePanel();
     };
 
+
     document.body.appendChild(
       button
     );
   }
 
-  /*
-   * ---------------------------------------------------------
-   * DYNAMIC SCANNING
-   * ---------------------------------------------------------
-   */
+
+  // =========================================================
+  // RESCAN
+  // =========================================================
 
   let scanTimer;
 
   function rescan() {
+    /*
+     * Never run normal filtering while the automatic loader
+     * is active.
+     */
+    if (state.loadingMatches) {
+      return;
+    }
+
     clearTimeout(scanTimer);
 
-    scanTimer = setTimeout(() => {
-      discoverEntries();
-      applyFilter();
-    }, 300);
+    scanTimer =
+      setTimeout(() => {
+        discoverEntries();
+
+        applyFilter();
+      }, 300);
   }
 
-  /*
-   * ---------------------------------------------------------
-   * INITIALIZATION
-   * ---------------------------------------------------------
-   */
+
+  // =========================================================
+  // INITIALIZATION
+  // =========================================================
 
   async function init() {
     await loadState();
 
     createPanel();
+
     createLauncher();
 
     discoverEntries();
+
     applyFilter();
 
+
     const observer =
-      new MutationObserver(rescan);
+      new MutationObserver(
+        rescan
+      );
+
 
     observer.observe(
       document.body,
@@ -1183,6 +1312,7 @@
       }
     );
 
+
     window.addEventListener(
       "scroll",
       rescan,
@@ -1191,6 +1321,7 @@
       }
     );
   }
+
 
   if (
     location.hostname ===
