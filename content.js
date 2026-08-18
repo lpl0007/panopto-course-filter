@@ -31,12 +31,9 @@
     FORWARD_RE.lastIndex = 0;
 
     while ((match = FORWARD_RE.exec(text))) {
-      const term = match[1]
-        .charAt(0)
-        .toUpperCase() +
-        match[1]
-          .slice(1)
-          .toLowerCase();
+      const term =
+        match[1].charAt(0).toUpperCase() +
+        match[1].slice(1).toLowerCase();
 
       const year = match[2];
 
@@ -73,12 +70,8 @@
         : "";
 
       const term =
-        match[4]
-          .charAt(0)
-          .toUpperCase() +
-        match[4]
-          .slice(1)
-          .toLowerCase();
+        match[4].charAt(0).toUpperCase() +
+        match[4].slice(1).toLowerCase();
 
       const year = match[5];
 
@@ -133,11 +126,8 @@
 
     state.entries = [...found.values()]
       .sort((a, b) => {
-        const ay =
-          Number(a.year);
-
-        const by =
-          Number(b.year);
+        const ay = Number(a.year);
+        const by = Number(b.year);
 
         if (ay !== by) {
           return by - ay;
@@ -199,11 +189,6 @@
           const rect =
             parent.getBoundingClientRect();
 
-          /*
-           * An individual recording card should contain
-           * a reasonable amount of text but not an entire
-           * Panopto page section.
-           */
           if (
             rect.width > 150 &&
             rect.height > 100 &&
@@ -216,9 +201,7 @@
                 "a[href]"
               );
 
-            if (
-              links.length <= 4
-            ) {
+            if (links.length <= 4) {
               cards.add(parent);
               break;
             }
@@ -271,18 +254,42 @@
     );
 
     cards.forEach(card => {
+      card.style.removeProperty(
+        "display"
+      );
+
+      card.style.removeProperty(
+        "visibility"
+      );
+
+      card.style.removeProperty(
+        "opacity"
+      );
+
+      card.style.removeProperty(
+        "pointer-events"
+      );
+
       if (
         !state.enabled ||
         state.selected.length === 0
       ) {
-        card.style.display = "";
         return;
       }
 
-      card.style.display =
-        cardMatchesSelection(card)
-          ? ""
-          : "none";
+      const matches =
+        cardMatchesSelection(card);
+
+      if (!matches) {
+        card.style.visibility =
+          "hidden";
+
+        card.style.opacity =
+          "0";
+
+        card.style.pointerEvents =
+          "none";
+      }
     });
 
     updatePanel();
@@ -319,14 +326,20 @@
     const year =
       now.getFullYear();
 
-    if (month >= 1 && month <= 5) {
+    if (
+      month >= 1 &&
+      month <= 5
+    ) {
       return {
         term: "Spring",
         year
       };
     }
 
-    if (month >= 6 && month <= 7) {
+    if (
+      month >= 6 &&
+      month <= 7
+    ) {
       return {
         term: "Summer",
         year
@@ -430,6 +443,7 @@
           event.target.checked;
 
         await saveState();
+
         applyFilter();
       };
 
@@ -445,6 +459,7 @@
         state.selected = [];
 
         await saveState();
+
         applyFilter();
       };
 
@@ -458,6 +473,7 @@
           );
 
         await saveState();
+
         applyFilter();
       };
 
@@ -490,6 +506,7 @@
     ).onclick =
       () => {
         discoverEntries();
+
         applyFilter();
       };
   }
@@ -513,9 +530,6 @@
 
     list.innerHTML = "";
 
-    /*
-     * Group entries by semester.
-     */
     const groups =
       new Map();
 
@@ -609,6 +623,7 @@
               }
 
               await saveState();
+
               applyFilter();
             };
 
@@ -677,18 +692,22 @@
 
     scanTimer =
       setTimeout(() => {
+
         discoverEntries();
+
         applyFilter();
-      }, 700);
+      }, 300);
   }
 
   async function init() {
     await loadState();
 
     createPanel();
+
     createLauncher();
 
     discoverEntries();
+
     applyFilter();
 
     const observer =
@@ -701,6 +720,16 @@
       {
         childList: true,
         subtree: true
+      }
+    );
+
+    window.addEventListener(
+      "scroll",
+      () => {
+        rescan();
+      },
+      {
+        passive: true
       }
     );
   }
