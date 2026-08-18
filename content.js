@@ -1,13 +1,32 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "panoptoCourseFilterV4";
+  const STORAGE_KEY = "panoptoCourseFilterV5";
 
   const state = {
     entries: [],
     selected: [],
-    enabled: true
+    currentClasses: [],
+    enabled: true,
+    collapsedSemesters: {}
   };
+
+  /*
+   * ---------------------------------------------------------
+   * COURSE / SEMESTER PARSING
+   * ---------------------------------------------------------
+   *
+   * Recognizes:
+   *
+   * Fall 2026-COMP-6710-D01
+   * Spring 2026-COMP-4300-001
+   * Summer 2026-BUAL-2650-002
+   *
+   * and:
+   *
+   * COMP-4300-001 (Spring 2026)
+   * BUAL-2650-002 (SUMMER 2026)
+   */
 
   const FORWARD_RE =
     /\b(Fall|Spring|Summer|Winter)\s+(\d{4})\s*[-–—]\s*([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\b/gi;
@@ -93,6 +112,16 @@
     return `${entry.term} ${entry.year} — ${entry.course}`;
   }
 
+  function semesterKey(entry) {
+    return `${entry.term} ${entry.year}`;
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * COURSE DISCOVERY
+   * ---------------------------------------------------------
+   */
+
   function discoverEntries() {
     const found = new Map();
 
@@ -106,6 +135,10 @@
           element.textContent
         );
 
+        /*
+         * Don't inspect huge containers.
+         * They can contain many unrelated public courses.
+         */
         if (
           text.length < 8 ||
           text.length > 350
@@ -155,6 +188,15 @@
         );
       });
   }
+
+  /*
+   * ---------------------------------------------------------
+   * RECORDING CARD DETECTION
+   * ---------------------------------------------------------
+   *
+   * This is intentionally based on the version that was
+   * already working for you.
+   */
 
   function findRecordingCards() {
     const cards = new Set();
@@ -241,19 +283,30 @@
     );
   }
 
+  /*
+   * ---------------------------------------------------------
+   * FILTERING
+   * ---------------------------------------------------------
+   *
+   * IMPORTANT:
+   *
+   * We intentionally do NOT use display:none.
+   *
+   * Panopto lazy-loads recordings as the page is scrolled.
+   * Removing recordings from the layout can prevent Panopto
+   * from loading the next batch.
+   */
+
   function applyFilter() {
     const cards =
       findRecordingCards();
 
-    console.log(
-      "[Panopto Course Filter]",
-      "recording cards:",
-      cards.length,
-      "selected:",
-      state.selected
-    );
+    let visibleCount = 0;
 
     cards.forEach(card => {
+      /*
+       * Clear previous filtering.
+       */
       card.style.removeProperty(
         "display"
       );
@@ -274,13 +327,19 @@
         !state.enabled ||
         state.selected.length === 0
       ) {
+        visibleCount++;
         return;
       }
 
       const matches =
         cardMatchesSelection(card);
 
-      if (!matches) {
+      if (matches) {
+        visibleCount++;
+      } else {
+        /*
+         * Keep card in layout for Panopto's lazy loader.
+         */
         card.style.visibility =
           "hidden";
 
@@ -292,8 +351,14 @@
       }
     });
 
-    updatePanel();
+    updatePanel(visibleCount);
   }
+
+  /*
+   * ---------------------------------------------------------
+   * STORAGE
+   * ---------------------------------------------------------
+   */
 
   async function loadState() {
     const result =
@@ -309,13 +374,47 @@
         result[STORAGE_KEY]
       );
     }
+
+    /*
+     * Clean saved selections that no longer exist.
+     */
+    state.currentClasses =
+      Array.isArray(
+        state.currentClasses
+      )
+        ? state.currentClasses
+        : [];
+
+    state.selected =
+      Array.isArray(
+        state.selected
+      )
+        ? state.selected
+        : [];
+
+    state.collapsedSemesters =
+      state.collapsedSemesters || {};
   }
 
   async function saveState() {
     await chrome.storage.local.set({
-      [STORAGE_KEY]: state
+      [STORAGE_KEY]: {
+        entries: state.entries,
+        selected: state.selected,
+        currentClasses:
+          state.currentClasses,
+        enabled: state.enabled,
+        collapsedSemesters:
+          state.collapsedSemesters
+      }
     });
   }
+
+  /*
+   * ---------------------------------------------------------
+   * CURRENT SEMESTER
+   * ---------------------------------------------------------
+   */
 
   function getCurrentTerm() {
     const now = new Date();
@@ -325,6 +424,12 @@
 
     const year =
       now.getFullYear();
+
+    /*
+     * Jan-May  = Spring
+     * Jun-Jul  = Summer
+     * Aug-Dec  = Fall
+     */
 
     if (
       month >= 1 &&
@@ -351,6 +456,34 @@
       year
     };
   }
+
+  /*
+   * ---------------------------------------------------------
+   * COUNT MATCHING RECORDINGS
+   * ---------------------------------------------------------
+   */
+
+  function countMatchingCards() {
+    const cards =
+      findRecordingCards();
+
+    if (
+      !state.enabled ||
+      state.selected.length === 0
+    ) {
+      return cards.length;
+    }
+
+    return cards.filter(card =>
+      cardMatchesSelection(card)
+    ).length;
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * PANEL
+   * ---------------------------------------------------------
+   */
 
   function createPanel() {
     if (
@@ -385,13 +518,29 @@
         placeholder="Search courses..."
       >
 
-      <div class="pcf-buttons">
-        <button id="pcf-current">
-          Current
-        </button>
+      <div class="pcf-current-box">
+        <div class="pcf-current-title">
+          ⭐ Current Classes
+        </div>
 
-        <button id="pcf-all">
-          All
+        <div class="pcf-current-buttons">
+          <button id="pcf-use-current">
+            Use Current
+          </button>
+
+          <button id="pcf-save-current">
+            Save Selected
+          </button>
+
+          <button id="pcf-clear-current">
+            Clear Saved
+          </button>
+        </div>
+      </div>
+
+      <div class="pcf-buttons">
+        <button id="pcf-current-semester">
+          Current Semester
         </button>
 
         <button id="pcf-none">
@@ -410,7 +559,7 @@
       <div id="pcf-course-list"></div>
 
       <div class="pcf-footer">
-        <span id="pcf-count"></span>
+        <div id="pcf-count"></div>
 
         <button id="pcf-refresh">
           ↻ Scan
@@ -422,13 +571,22 @@
       panel
     );
 
+    /*
+     * CLOSE
+     */
+
     document.getElementById(
       "pcf-close"
-    ).onclick = () => {
-      panel.classList.add(
-        "pcf-hidden"
-      );
-    };
+    ).onclick =
+      () => {
+        panel.classList.add(
+          "pcf-hidden"
+        );
+      };
+
+    /*
+     * ENABLE/DISABLE FILTER
+     */
 
     document.getElementById(
       "pcf-enabled"
@@ -447,10 +605,20 @@
         applyFilter();
       };
 
+    /*
+     * SEARCH
+     */
+
     document.getElementById(
       "pcf-search"
     ).oninput =
-      updatePanel;
+      () => {
+        updatePanel();
+      };
+
+    /*
+     * NONE
+     */
 
     document.getElementById(
       "pcf-none"
@@ -463,22 +631,14 @@
         applyFilter();
       };
 
-    document.getElementById(
-      "pcf-all"
-    ).onclick =
-      async () => {
-        state.selected =
-          state.entries.map(
-            entry => entry.key
-          );
-
-        await saveState();
-
-        applyFilter();
-      };
+    /*
+     * CURRENT SEMESTER
+     *
+     * Select every course in the current semester.
+     */
 
     document.getElementById(
-      "pcf-current"
+      "pcf-current-semester"
     ).onclick =
       async () => {
         const current =
@@ -501,6 +661,57 @@
         applyFilter();
       };
 
+    /*
+     * USE SAVED CURRENT CLASSES
+     */
+
+    document.getElementById(
+      "pcf-use-current"
+    ).onclick =
+      async () => {
+        state.selected =
+          [...state.currentClasses];
+
+        await saveState();
+
+        applyFilter();
+      };
+
+    /*
+     * SAVE SELECTED AS CURRENT
+     */
+
+    document.getElementById(
+      "pcf-save-current"
+    ).onclick =
+      async () => {
+        state.currentClasses =
+          [...state.selected];
+
+        await saveState();
+
+        updatePanel();
+      };
+
+    /*
+     * CLEAR SAVED CURRENT CLASSES
+     */
+
+    document.getElementById(
+      "pcf-clear-current"
+    ).onclick =
+      async () => {
+        state.currentClasses = [];
+
+        await saveState();
+
+        updatePanel();
+      };
+
+    /*
+     * SCAN
+     */
+
     document.getElementById(
       "pcf-refresh"
     ).onclick =
@@ -511,7 +722,15 @@
       };
   }
 
-  function updatePanel() {
+  /*
+   * ---------------------------------------------------------
+   * PANEL UPDATE
+   * ---------------------------------------------------------
+   */
+
+  function updatePanel(
+    matchingCount = null
+  ) {
     const list =
       document.getElementById(
         "pcf-course-list"
@@ -530,6 +749,10 @@
 
     list.innerHTML = "";
 
+    /*
+     * Group entries by semester.
+     */
+
     const groups =
       new Map();
 
@@ -546,7 +769,7 @@
       })
       .forEach(entry => {
         const group =
-          `${entry.term} ${entry.year}`;
+          semesterKey(entry);
 
         if (!groups.has(group)) {
           groups.set(
@@ -560,22 +783,138 @@
           .push(entry);
       });
 
+    /*
+     * Render each semester.
+     */
+
     groups.forEach(
       (entries, semester) => {
-        const heading =
+        const semesterHeader =
           document.createElement(
             "div"
           );
 
-        heading.className =
-          "pcf-semester";
+        semesterHeader.className =
+          "pcf-semester-header";
 
-        heading.textContent =
-          semester;
+        const collapsed =
+          !!state
+            .collapsedSemesters[
+              semester
+            ];
+
+        const arrow =
+          collapsed
+            ? "▶"
+            : "▼";
+
+        semesterHeader.innerHTML = `
+          <button class="pcf-semester-toggle">
+            ${arrow}
+          </button>
+
+          <strong>${semester}</strong>
+
+          <button class="pcf-semester-all">
+            All
+          </button>
+        `;
 
         list.appendChild(
-          heading
+          semesterHeader
         );
+
+        const semesterCourses =
+          document.createElement(
+            "div"
+          );
+
+        semesterCourses.className =
+          "pcf-semester-courses";
+
+        if (collapsed) {
+          semesterCourses.style.display =
+            "none";
+        }
+
+        /*
+         * Collapse / expand
+         */
+
+        semesterHeader
+          .querySelector(
+            ".pcf-semester-toggle"
+          )
+          .onclick =
+          async () => {
+            state.collapsedSemesters[
+              semester
+            ] =
+              !state
+                .collapsedSemesters[
+                semester
+              ];
+
+            await saveState();
+
+            updatePanel(
+              matchingCount
+            );
+          };
+
+        /*
+         * Select all courses in semester
+         */
+
+        semesterHeader
+          .querySelector(
+            ".pcf-semester-all"
+          )
+          .onclick =
+          async () => {
+            const keys =
+              entries.map(
+                entry =>
+                  entry.key
+              );
+
+            const allSelected =
+              keys.every(key =>
+                state.selected.includes(
+                  key
+                )
+              );
+
+            if (allSelected) {
+              state.selected =
+                state.selected.filter(
+                  key =>
+                    !keys.includes(
+                      key
+                    )
+                );
+            } else {
+              keys.forEach(key => {
+                if (
+                  !state.selected.includes(
+                    key
+                  )
+                ) {
+                  state.selected.push(
+                    key
+                  );
+                }
+              });
+            }
+
+            await saveState();
+
+            applyFilter();
+          };
+
+        /*
+         * Individual courses
+         */
 
         entries.forEach(entry => {
           const label =
@@ -598,6 +937,20 @@
             state.selected.includes(
               entry.key
             );
+
+          /*
+           * Mark saved current classes.
+           */
+
+          if (
+            state.currentClasses.includes(
+              entry.key
+            )
+          ) {
+            label.classList.add(
+              "pcf-current-class"
+            );
+          }
 
           checkbox.onchange =
             async () => {
@@ -634,18 +987,98 @@
             )
           );
 
-          list.appendChild(
+          /*
+           * Small star for saved current classes.
+           */
+
+          if (
+            state.currentClasses.includes(
+              entry.key
+            )
+          ) {
+            const star =
+              document.createElement(
+                "span"
+              );
+
+            star.className =
+              "pcf-star";
+
+            star.textContent =
+              " ★";
+
+            star.title =
+              "Saved as a current class";
+
+            label.appendChild(
+              star
+            );
+          }
+
+          semesterCourses.appendChild(
             label
           );
         });
+
+        list.appendChild(
+          semesterCourses
+        );
       }
     );
 
-    document.getElementById(
-      "pcf-count"
-    ).textContent =
-      `${state.selected.length} selected · ${state.entries.length} found`;
+    /*
+     * Bottom statistics.
+     */
+
+    if (
+      matchingCount === null
+    ) {
+      matchingCount =
+        countMatchingCards();
+    }
+
+    const selectedCount =
+      state.selected.length;
+
+    const currentCount =
+      state.currentClasses.length;
+
+    const countElement =
+      document.getElementById(
+        "pcf-count"
+      );
+
+    countElement.innerHTML =
+      `
+        <div>
+          <strong>
+            ${selectedCount}
+          </strong>
+          selected ·
+          <strong>
+            ${matchingCount}
+          </strong>
+          recordings
+        </div>
+
+        ${
+          currentCount > 0
+            ? `
+              <div class="pcf-saved-count">
+                ⭐ ${currentCount}
+                saved current
+              </div>
+            `
+            : ""
+        }
+      `;
   }
+
+  /*
+   * ---------------------------------------------------------
+   * LAUNCHER
+   * ---------------------------------------------------------
+   */
 
   function createLauncher() {
     if (
@@ -676,12 +1109,22 @@
           .classList.remove(
             "pcf-hidden"
           );
+
+        updatePanel();
       };
 
     document.body.appendChild(
       button
     );
   }
+
+  /*
+   * ---------------------------------------------------------
+   * CONTINUOUS SCANNING
+   * ---------------------------------------------------------
+   *
+   * Panopto loads recordings dynamically as you scroll.
+   */
 
   let scanTimer;
 
@@ -692,12 +1135,17 @@
 
     scanTimer =
       setTimeout(() => {
-
         discoverEntries();
 
         applyFilter();
       }, 300);
   }
+
+  /*
+   * ---------------------------------------------------------
+   * INITIALIZATION
+   * ---------------------------------------------------------
+   */
 
   async function init() {
     await loadState();
@@ -709,6 +1157,10 @@
     discoverEntries();
 
     applyFilter();
+
+    /*
+     * Watch for Panopto dynamically adding recordings.
+     */
 
     const observer =
       new MutationObserver(
