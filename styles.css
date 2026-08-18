@@ -1,21 +1,70 @@
-#pcf-panel {
-  position: fixed;
-  top: 80px;
-  right: 18px;
-  width: 320px;
-  max-height: calc(100vh - 110px);
-  z-index: 2147483647;
+/* =========================================================
+   PANOPTO COURSE FILTER
+   ========================================================= */
 
-  background: white;
+#pcf-launcher {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2147483646;
+
+  border: 1px solid #aaa;
+  border-radius: 8px;
+
+  padding: 9px 13px;
+
+  background: #ffffff;
   color: #222;
 
-  border: 1px solid #ccc;
-  border-radius: 12px;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.2);
 
-  box-shadow: 0 8px 30px rgba(0,0,0,.25);
+  cursor: pointer;
 
-  font-family: Arial, sans-serif;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+#pcf-launcher:hover {
+  background: #f5f5f5;
+}
+
+
+/* =========================================================
+   PANEL
+   ========================================================= */
+
+#pcf-panel {
+  position: fixed;
+
+  top: 80px;
+  right: 18px;
+
+  width: 360px;
+  max-height: calc(100vh - 110px);
+
+  z-index: 2147483647;
+
+  display: flex;
+  flex-direction: column;
+
+  background: #ffffff;
+  color: #222;
+
+  border: 1px solid #bbb;
+  border-radius: 10px;
+
+  box-shadow:
+    0 5px 25px rgba(0, 0, 0, 0.25);
+
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Arial,
+    sans-serif;
+
+  font-size: 13px;
 
   overflow: hidden;
 }
@@ -24,201 +73,464 @@
   display: none;
 }
 
+
+/* =========================================================
+   HEADER
+   ========================================================= */
+
 .pcf-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
 
-  padding: 13px 14px;
+  padding: 11px 13px;
 
-  background: #f3f7f4;
+  background: #f5f5f5;
+
   border-bottom: 1px solid #ddd;
 }
 
 .pcf-header strong {
-  font-size: 15px;
+  flex: 1;
+
+  font-size: 14px;
 }
 
 #pcf-close {
+  width: 27px;
+  height: 27px;
+
   border: 0;
+  border-radius: 5px;
+
   background: transparent;
-  font-size: 22px;
+
+  font-size: 20px;
+  line-height: 20px;
+
   cursor: pointer;
 }
 
-.pcf-description {
-  padding: 10px 14px 5px;
-  color: #666;
+#pcf-close:hover {
+  background: #ddd;
 }
+
+
+/* =========================================================
+   DESCRIPTION
+   ========================================================= */
+
+.pcf-description {
+  padding: 8px 14px 4px;
+
+  color: #666;
+
+  font-size: 11px;
+}
+
+
+/* =========================================================
+   SEARCH
+   ========================================================= */
 
 #pcf-search {
   box-sizing: border-box;
 
   width: calc(100% - 28px);
-  margin: 8px 14px;
 
-  padding: 8px 10px;
+  margin: 7px 14px;
+
+  padding: 8px 9px;
 
   border: 1px solid #bbb;
-  border-radius: 7px;
-}
-
-.pcf-buttons {
-  display: flex;
-  gap: 6px;
-  padding: 3px 14px 8px;
-}
-
-.pcf-buttons button,
-#pcf-refresh {
-  border: 1px solid #bbb;
-  background: white;
   border-radius: 6px;
 
-  padding: 6px 9px;
+  background: #fff;
 
-  cursor: pointer;
-}
+  outline: none;
 
-.pcf-toggle {
-  display: block;
-  padding: 5px 14px;
-}
-
-#pcf-course-list {
-  max-height: 45vh;
-  overflow-y: auto;
-
-  border-top: 1px solid #eee;
-}
-
-.pcf-course {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-
-  padding: 8px 14px;
-
-  cursor: pointer;
-}
-
-.pcf-course:hover {
-  background: #f3f3f3;
-}
-
-.pcf-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-
-  padding: 9px 14px;
-
-  border-top: 1px solid #ddd;
-
-  color: #666;
   font-size: 12px;
 }
 
-#pcf-launcher {
-  position: fixed;
-  right: 18px;
-  bottom: 18px;
+#pcf-search:focus {
+  border-color: #777;
 
-  z-index: 2147483646;
-
-  border: 0;
-  border-radius: 22px;
-
-  padding: 11px 16px;
-
-  background: #3f7f4f;
-  color: white;
-
-  font: bold 14px Arial, sans-serif;
-
-  cursor: pointer;
-
-  box-shadow: 0 4px 15px rgba(0,0,0,.25);
+  box-shadow:
+    0 0 0 2px rgba(80, 120, 80, 0.12);
 }
 
-#pcf-launcher:hover {
-  background: #336a40;
-}
+
+/* =========================================================
+   CURRENT CLASSES
+   ========================================================= */
 
 .pcf-current-box {
   margin: 8px 14px;
+
   padding: 9px;
+
   background: #f5f8f5;
+
   border: 1px solid #d9e2d9;
+
   border-radius: 8px;
 }
 
 .pcf-current-title {
-  font-weight: bold;
   margin-bottom: 7px;
+
+  font-weight: 700;
 }
 
 .pcf-current-buttons {
   display: flex;
+
   flex-wrap: wrap;
+
   gap: 5px;
 }
 
 .pcf-current-buttons button {
   border: 1px solid #aaa;
-  background: white;
   border-radius: 6px;
+
   padding: 5px 7px;
+
+  background: #fff;
+
   cursor: pointer;
-  font-size: 12px;
+
+  font-size: 11px;
 }
+
+.pcf-current-buttons button:hover {
+  background: #f0f0f0;
+}
+
+
+/* =========================================================
+   LOAD MATCHING RECORDINGS
+   ========================================================= */
+
+.pcf-load-button {
+  display: block;
+
+  width: calc(100% - 28px);
+
+  margin: 2px 14px 8px;
+
+  padding: 9px 10px;
+
+  border: 1px solid #b9c8b9;
+
+  border-radius: 7px;
+
+  background: #edf6ed;
+
+  color: #234423;
+
+  font-weight: 600;
+
+  cursor: pointer;
+}
+
+.pcf-load-button:hover {
+  background: #e1f0e1;
+}
+
+.pcf-load-button.pcf-loading {
+  background: #fff4d6;
+
+  border-color: #e1c46a;
+
+  color: #725500;
+}
+
+
+/* =========================================================
+   STATUS
+   ========================================================= */
+
+.pcf-status {
+  display: none;
+
+  margin: 0 14px 7px;
+
+  padding: 6px 8px;
+
+  border-radius: 5px;
+
+  background: #f2f2f2;
+
+  color: #555;
+
+  font-size: 11px;
+}
+
+.pcf-status-visible {
+  display: block;
+}
+
+
+/* =========================================================
+   GENERAL BUTTONS
+   ========================================================= */
+
+.pcf-buttons {
+  display: flex;
+
+  gap: 6px;
+
+  padding: 3px 14px 7px;
+}
+
+.pcf-buttons button {
+  flex: 1;
+
+  border: 1px solid #bbb;
+
+  border-radius: 6px;
+
+  padding: 6px;
+
+  background: #fff;
+
+  cursor: pointer;
+
+  font-size: 11px;
+}
+
+.pcf-buttons button:hover {
+  background: #f3f3f3;
+}
+
+
+/* =========================================================
+   FILTER TOGGLE
+   ========================================================= */
+
+.pcf-toggle {
+  display: flex;
+  align-items: center;
+
+  gap: 6px;
+
+  padding: 5px 14px 8px;
+
+  color: #444;
+
+  font-size: 11px;
+}
+
+.pcf-toggle input {
+  margin: 0;
+}
+
+
+/* =========================================================
+   COURSE LIST
+   ========================================================= */
+
+#pcf-course-list {
+  flex: 1;
+
+  min-height: 0;
+
+  overflow-y: auto;
+
+  border-top: 1px solid #ddd;
+}
+
+
+/* =========================================================
+   SEMESTERS
+   ========================================================= */
 
 .pcf-semester-header {
   display: flex;
   align-items: center;
+
   gap: 4px;
+
   padding: 7px 8px;
+
   background: #f1f3f1;
+
   border-top: 1px solid #ddd;
   border-bottom: 1px solid #ddd;
+
   position: sticky;
+
   top: 0;
+
   z-index: 2;
 }
 
 .pcf-semester-header strong {
   flex: 1;
+
+  font-size: 12px;
 }
 
 .pcf-semester-toggle,
 .pcf-semester-all {
   border: 0;
+
   background: transparent;
+
   cursor: pointer;
+}
+
+.pcf-semester-toggle {
+  width: 22px;
+
+  padding: 2px;
+
+  font-size: 11px;
 }
 
 .pcf-semester-all {
   border: 1px solid #bbb;
+
   border-radius: 5px;
-  background: white;
+
   padding: 3px 6px;
-  font-size: 11px;
+
+  background: #fff;
+
+  font-size: 10px;
+}
+
+.pcf-semester-all:hover {
+  background: #eee;
 }
 
 .pcf-semester-courses {
   padding-bottom: 3px;
 }
 
+
+/* =========================================================
+   INDIVIDUAL COURSE
+   ========================================================= */
+
+.pcf-course {
+  display: flex;
+  align-items: center;
+
+  min-height: 28px;
+
+  box-sizing: border-box;
+
+  padding: 4px 12px;
+
+  cursor: pointer;
+
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.pcf-course:hover {
+  background: #f7f7f7;
+}
+
+.pcf-course input {
+  margin: 0 8px 0 0;
+}
+
 .pcf-current-class {
   background: #fffbea;
 }
 
+.pcf-current-class:hover {
+  background: #fff7d9;
+}
+
 .pcf-star {
+  margin-left: 3px;
+
   color: #d69e00;
+
   font-size: 12px;
 }
 
+
+/* =========================================================
+   FOOTER
+   ========================================================= */
+
+.pcf-footer {
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+
+  padding: 8px 12px;
+
+  background: #f7f7f7;
+
+  border-top: 1px solid #ddd;
+}
+
+#pcf-count {
+  flex: 1;
+
+  color: #555;
+
+  font-size: 11px;
+}
+
 .pcf-saved-count {
-  color: #777;
   margin-top: 2px;
+
+  color: #777;
+}
+
+#pcf-refresh {
+  border: 1px solid #bbb;
+
+  border-radius: 5px;
+
+  padding: 5px 8px;
+
+  background: #fff;
+
+  cursor: pointer;
+
+  font-size: 11px;
+}
+
+#pcf-refresh:hover {
+  background: #eee;
+}
+
+
+/* =========================================================
+   HIDDEN PANOPTO RECORDINGS
+   ========================================================= */
+
+.pcf-filtered-hidden {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+
+/* =========================================================
+   SMALL SCREENS
+   ========================================================= */
+
+@media (max-width: 600px) {
+  #pcf-panel {
+    top: 10px;
+    right: 10px;
+    left: 10px;
+
+    width: auto;
+
+    max-height: calc(100vh - 20px);
+  }
+
+  #pcf-launcher {
+    right: 10px;
+    bottom: 10px;
+  }
 }
