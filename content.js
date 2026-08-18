@@ -1,32 +1,16 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "panoptoCourseFilterV5";
+  const STORAGE_KEY = "panoptoCourseFilterV6";
 
   const state = {
     entries: [],
     selected: [],
     currentClasses: [],
     enabled: true,
-    collapsedSemesters: {}
+    collapsedSemesters: {},
+    loadingMatches: false
   };
-
-  /*
-   * ---------------------------------------------------------
-   * COURSE / SEMESTER PARSING
-   * ---------------------------------------------------------
-   *
-   * Recognizes:
-   *
-   * Fall 2026-COMP-6710-D01
-   * Spring 2026-COMP-4300-001
-   * Summer 2026-BUAL-2650-002
-   *
-   * and:
-   *
-   * COMP-4300-001 (Spring 2026)
-   * BUAL-2650-002 (SUMMER 2026)
-   */
 
   const FORWARD_RE =
     /\b(Fall|Spring|Summer|Winter)\s+(\d{4})\s*[-–—]\s*([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\b/gi;
@@ -34,11 +18,31 @@
   const REVERSE_RE =
     /\b([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\s*\(\s*(Fall|Spring|Summer|Winter)\s+(\d{4})\s*\)/gi;
 
+  /*
+   * ---------------------------------------------------------
+   * BASIC HELPERS
+   * ---------------------------------------------------------
+   */
+
   function normalize(text) {
     return (text || "")
       .replace(/\s+/g, " ")
       .trim();
   }
+
+  function entryLabel(entry) {
+    return `${entry.term} ${entry.year} — ${entry.course}`;
+  }
+
+  function semesterKey(entry) {
+    return `${entry.term} ${entry.year}`;
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * COURSE PARSING
+   * ---------------------------------------------------------
+   */
 
   function parseEntries(text) {
     const results = [];
@@ -108,14 +112,6 @@
     return results;
   }
 
-  function entryLabel(entry) {
-    return `${entry.term} ${entry.year} — ${entry.course}`;
-  }
-
-  function semesterKey(entry) {
-    return `${entry.term} ${entry.year}`;
-  }
-
   /*
    * ---------------------------------------------------------
    * COURSE DISCOVERY
@@ -135,10 +131,6 @@
           element.textContent
         );
 
-        /*
-         * Don't inspect huge containers.
-         * They can contain many unrelated public courses.
-         */
         if (
           text.length < 8 ||
           text.length > 350
@@ -191,11 +183,8 @@
 
   /*
    * ---------------------------------------------------------
-   * RECORDING CARD DETECTION
+   * RECORDING CARDS
    * ---------------------------------------------------------
-   *
-   * This is intentionally based on the version that was
-   * already working for you.
    */
 
   function findRecordingCards() {
@@ -285,16 +274,8 @@
 
   /*
    * ---------------------------------------------------------
-   * FILTERING
+   * FILTER
    * ---------------------------------------------------------
-   *
-   * IMPORTANT:
-   *
-   * We intentionally do NOT use display:none.
-   *
-   * Panopto lazy-loads recordings as the page is scrolled.
-   * Removing recordings from the layout can prevent Panopto
-   * from loading the next batch.
    */
 
   function applyFilter() {
@@ -304,9 +285,6 @@
     let visibleCount = 0;
 
     cards.forEach(card => {
-      /*
-       * Clear previous filtering.
-       */
       card.style.removeProperty(
         "display"
       );
@@ -338,7 +316,10 @@
         visibleCount++;
       } else {
         /*
-         * Keep card in layout for Panopto's lazy loader.
+         * DO NOT use display:none.
+         *
+         * Panopto needs these elements in the layout
+         * for its lazy loader.
          */
         card.style.visibility =
           "hidden";
@@ -351,7 +332,9 @@
       }
     });
 
-    updatePanel(visibleCount);
+    updatePanel(
+      visibleCount
+    );
   }
 
   /*
@@ -375,9 +358,6 @@
       );
     }
 
-    /*
-     * Clean saved selections that no longer exist.
-     */
     state.currentClasses =
       Array.isArray(
         state.currentClasses
@@ -394,6 +374,9 @@
 
     state.collapsedSemesters =
       state.collapsedSemesters || {};
+
+    state.loadingMatches =
+      false;
   }
 
   async function saveState() {
@@ -425,12 +408,6 @@
     const year =
       now.getFullYear();
 
-    /*
-     * Jan-May  = Spring
-     * Jun-Jul  = Summer
-     * Aug-Dec  = Fall
-     */
-
     if (
       month >= 1 &&
       month <= 5
@@ -459,7 +436,7 @@
 
   /*
    * ---------------------------------------------------------
-   * COUNT MATCHING RECORDINGS
+   * MATCHING RECORDING COUNT
    * ---------------------------------------------------------
    */
 
@@ -477,6 +454,337 @@
     return cards.filter(card =>
       cardMatchesSelection(card)
     ).length;
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * AUTOMATIC LAZY LOADING
+   * ---------------------------------------------------------
+   *
+   * Panopto normally loads more recordings when the user
+   * approaches the bottom of the recording list.
+   *
+   * This function repeatedly moves the viewport near the
+   * bottom, waits for Panopto to load more content, and
+   * checks whether the number of recording cards increased.
+   *
+   * It stops when:
+   *
+   *   - no new recordings appear for several attempts
+   *   - the safety limit is reached
+   *   - the user cancels the operation
+   *
+   * We never request Panopto's API directly here.
+   */
+
+  async function loadMatchingRecordings() {
+    if (state.loadingMatches) {
+      return;
+    }
+
+    if (
+      state.selected.length === 0
+    ) {
+      showStatus(
+        "Select at least one course first."
+      );
+
+      return;
+    }
+
+    state.loadingMatches = true;
+
+    updateLoadingUI();
+
+    const originalScroll =
+      window.scrollY;
+
+    let previousCount =
+      findRecordingCards().length;
+
+    let unchangedRounds = 0;
+
+    /*
+     * Safety limit.
+     *
+     * This prevents an unusual Panopto page from causing
+     * an endless loading loop.
+     */
+    const MAX_ROUNDS = 60;
+
+    /*
+     * Wait helper.
+     */
+    const wait = ms =>
+      new Promise(resolve =>
+        setTimeout(
+          resolve,
+          ms
+        )
+      );
+
+    try {
+      for (
+        let round = 0;
+        round < MAX_ROUNDS;
+        round++
+      ) {
+        if (
+          !state.loadingMatches
+        ) {
+          break;
+        }
+
+        /*
+         * Re-scan before moving.
+         */
+        discoverEntries();
+        applyFilter();
+
+        const cardsBefore =
+          findRecordingCards();
+
+        previousCount =
+          cardsBefore.length;
+
+        /*
+         * Find the lowest visible element.
+         */
+        const cards =
+          findRecordingCards();
+
+        if (cards.length > 0) {
+          const lastCard =
+            cards[cards.length - 1];
+
+          /*
+           * Put the last currently loaded recording
+           * close to the viewport.
+           */
+          lastCard.scrollIntoView({
+            behavior: "instant",
+            block: "end"
+          });
+        } else {
+          /*
+           * Fallback if cards temporarily disappear.
+           */
+          window.scrollTo({
+            top:
+              document.documentElement
+                .scrollHeight,
+            behavior: "instant"
+          });
+        }
+
+        /*
+         * Give Panopto time to react to the scroll.
+         */
+        await wait(500);
+
+        /*
+         * Wait for dynamically added recordings.
+         */
+        await wait(700);
+
+        /*
+         * Check whether Panopto added anything.
+         */
+        discoverEntries();
+
+        const cardsAfter =
+          findRecordingCards();
+
+        const newCount =
+          cardsAfter.length;
+
+        /*
+         * Apply filtering immediately to newly loaded
+         * recordings.
+         */
+        applyFilter();
+
+        /*
+         * Update progress.
+         */
+        updateLoadingUI(
+          round + 1,
+          newCount
+        );
+
+        if (
+          newCount > previousCount
+        ) {
+          /*
+           * Success — Panopto loaded another batch.
+           */
+          unchangedRounds = 0;
+        } else {
+          unchangedRounds++;
+
+          /*
+           * One unchanged round isn't enough to declare
+           * we're finished. Panopto may simply be slow.
+           */
+          if (
+            unchangedRounds >= 4
+          ) {
+            /*
+             * Try one final bottom-of-page scroll.
+             */
+            window.scrollTo({
+              top:
+                document.documentElement
+                  .scrollHeight,
+              behavior: "instant"
+            });
+
+            await wait(1200);
+
+            const finalCount =
+              findRecordingCards().length;
+
+            if (
+              finalCount <= newCount
+            ) {
+              break;
+            }
+
+            unchangedRounds = 0;
+          }
+        }
+      }
+    } finally {
+      state.loadingMatches =
+        false;
+
+      /*
+       * Reapply the filter one final time.
+       */
+      discoverEntries();
+
+      applyFilter();
+
+      /*
+       * Return the user approximately to where they were.
+       */
+      window.scrollTo({
+        top: originalScroll,
+        behavior: "instant"
+      });
+
+      updateLoadingUI();
+
+      showStatus(
+        "Finished loading available recordings."
+      );
+    }
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * CANCEL AUTOMATIC LOADING
+   * ---------------------------------------------------------
+   */
+
+  function stopLoadingMatches() {
+    state.loadingMatches = false;
+
+    updateLoadingUI();
+
+    showStatus(
+      "Loading stopped."
+    );
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * STATUS MESSAGE
+   * ---------------------------------------------------------
+   */
+
+  let statusTimer;
+
+  function showStatus(message) {
+    const status =
+      document.getElementById(
+        "pcf-status"
+      );
+
+    if (!status) {
+      return;
+    }
+
+    status.textContent =
+      message;
+
+    status.classList.add(
+      "pcf-status-visible"
+    );
+
+    clearTimeout(
+      statusTimer
+    );
+
+    statusTimer =
+      setTimeout(() => {
+        status.classList.remove(
+          "pcf-status-visible"
+        );
+      }, 4000);
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * LOADING BUTTON UI
+   * ---------------------------------------------------------
+   */
+
+  function updateLoadingUI(
+    round = 0,
+    count = null
+  ) {
+    const button =
+      document.getElementById(
+        "pcf-load-matching"
+      );
+
+    if (!button) {
+      return;
+    }
+
+    if (
+      state.loadingMatches
+    ) {
+      button.textContent =
+        count !== null
+          ? `⏳ Loading… ${count} recordings`
+          : `⏳ Loading recordings…`;
+
+      button.classList.add(
+        "pcf-loading"
+      );
+
+      button.disabled = false;
+
+      /*
+       * Clicking while loading cancels it.
+       */
+      button.onclick =
+        stopLoadingMatches;
+    } else {
+      button.textContent =
+        "🔎 Load Matching Recordings";
+
+      button.classList.remove(
+        "pcf-loading"
+      );
+
+      button.disabled = false;
+
+      button.onclick =
+        loadMatchingRecordings;
+    }
   }
 
   /*
@@ -538,6 +846,18 @@
         </div>
       </div>
 
+      <button
+        id="pcf-load-matching"
+        class="pcf-load-button"
+      >
+        🔎 Load Matching Recordings
+      </button>
+
+      <div
+        id="pcf-status"
+        class="pcf-status"
+      ></div>
+
       <div class="pcf-buttons">
         <button id="pcf-current-semester">
           Current Semester
@@ -585,7 +905,7 @@
       };
 
     /*
-     * ENABLE/DISABLE FILTER
+     * FILTER TOGGLE
      */
 
     document.getElementById(
@@ -633,8 +953,6 @@
 
     /*
      * CURRENT SEMESTER
-     *
-     * Select every course in the current semester.
      */
 
     document.getElementById(
@@ -662,7 +980,7 @@
       };
 
     /*
-     * USE SAVED CURRENT CLASSES
+     * USE SAVED CURRENT
      */
 
     document.getElementById(
@@ -678,7 +996,7 @@
       };
 
     /*
-     * SAVE SELECTED AS CURRENT
+     * SAVE CURRENT
      */
 
     document.getElementById(
@@ -691,10 +1009,14 @@
         await saveState();
 
         updatePanel();
+
+        showStatus(
+          `Saved ${state.currentClasses.length} current classes.`
+        );
       };
 
     /*
-     * CLEAR SAVED CURRENT CLASSES
+     * CLEAR CURRENT
      */
 
     document.getElementById(
@@ -706,7 +1028,20 @@
         await saveState();
 
         updatePanel();
+
+        showStatus(
+          "Saved current classes cleared."
+        );
       };
+
+    /*
+     * LOAD MATCHING RECORDINGS
+     */
+
+    document.getElementById(
+      "pcf-load-matching"
+    ).onclick =
+      loadMatchingRecordings;
 
     /*
      * SCAN
@@ -719,7 +1054,13 @@
         discoverEntries();
 
         applyFilter();
+
+        showStatus(
+          "Scan complete."
+        );
       };
+
+    updateLoadingUI();
   }
 
   /*
@@ -748,10 +1089,6 @@
       ).toUpperCase();
 
     list.innerHTML = "";
-
-    /*
-     * Group entries by semester.
-     */
 
     const groups =
       new Map();
@@ -783,10 +1120,6 @@
           .push(entry);
       });
 
-    /*
-     * Render each semester.
-     */
-
     groups.forEach(
       (entries, semester) => {
         const semesterHeader =
@@ -800,8 +1133,8 @@
         const collapsed =
           !!state
             .collapsedSemesters[
-              semester
-            ];
+            semester
+          ];
 
         const arrow =
           collapsed
@@ -838,7 +1171,7 @@
         }
 
         /*
-         * Collapse / expand
+         * Collapse semester
          */
 
         semesterHeader
@@ -863,7 +1196,7 @@
           };
 
         /*
-         * Select all courses in semester
+         * Select/deselect entire semester
          */
 
         semesterHeader
@@ -938,10 +1271,6 @@
               entry.key
             );
 
-          /*
-           * Mark saved current classes.
-           */
-
           if (
             state.currentClasses.includes(
               entry.key
@@ -987,10 +1316,6 @@
             )
           );
 
-          /*
-           * Small star for saved current classes.
-           */
-
           if (
             state.currentClasses.includes(
               entry.key
@@ -1027,7 +1352,7 @@
     );
 
     /*
-     * Bottom statistics.
+     * Statistics
      */
 
     if (
@@ -1048,30 +1373,31 @@
         "pcf-count"
       );
 
-    countElement.innerHTML =
-      `
-        <div>
-          <strong>
-            ${selectedCount}
-          </strong>
-          selected ·
-          <strong>
-            ${matchingCount}
-          </strong>
-          recordings
-        </div>
+    countElement.innerHTML = `
+      <div>
+        <strong>
+          ${selectedCount}
+        </strong>
+        selected ·
+        <strong>
+          ${matchingCount}
+        </strong>
+        recordings
+      </div>
 
-        ${
-          currentCount > 0
-            ? `
-              <div class="pcf-saved-count">
-                ⭐ ${currentCount}
-                saved current
-              </div>
-            `
-            : ""
-        }
-      `;
+      ${
+        currentCount > 0
+          ? `
+            <div class="pcf-saved-count">
+              ⭐ ${currentCount}
+              saved current
+            </div>
+          `
+          : ""
+      }
+    `;
+
+    updateLoadingUI();
   }
 
   /*
@@ -1120,10 +1446,8 @@
 
   /*
    * ---------------------------------------------------------
-   * CONTINUOUS SCANNING
+   * MUTATION / SCROLL SCANNING
    * ---------------------------------------------------------
-   *
-   * Panopto loads recordings dynamically as you scroll.
    */
 
   let scanTimer;
@@ -1159,7 +1483,7 @@
     applyFilter();
 
     /*
-     * Watch for Panopto dynamically adding recordings.
+     * Watch Panopto for dynamically added recordings.
      */
 
     const observer =
@@ -1174,6 +1498,10 @@
         subtree: true
       }
     );
+
+    /*
+     * Normal scrolling still works.
+     */
 
     window.addEventListener(
       "scroll",
