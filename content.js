@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "panoptoCourseFilterV6";
+  const STORAGE_KEY = "panoptoCourseFilterV7";
 
   const state = {
     entries: [],
@@ -57,15 +57,24 @@
         match[1].slice(1).toLowerCase();
 
       const year = match[2];
-      const subject = match[3].toUpperCase();
-      const number = match[4];
 
-      const section = match[5]
-        ? match[5].toUpperCase()
-        : "";
+      const subject =
+        match[3].toUpperCase();
+
+      const number =
+        match[4];
+
+      const section =
+        match[5]
+          ? match[5].toUpperCase()
+          : "";
 
       const course =
-        `${subject}-${number}${section ? "-" + section : ""}`;
+        `${subject}-${number}${
+          section
+            ? "-" + section
+            : ""
+        }`;
 
       results.push({
         key: `${term} ${year}|${course}`,
@@ -75,24 +84,34 @@
       });
     }
 
+
     REVERSE_RE.lastIndex = 0;
 
     while ((match = REVERSE_RE.exec(text))) {
-      const subject = match[1].toUpperCase();
-      const number = match[2];
+      const subject =
+        match[1].toUpperCase();
 
-      const section = match[3]
-        ? match[3].toUpperCase()
-        : "";
+      const number =
+        match[2];
+
+      const section =
+        match[3]
+          ? match[3].toUpperCase()
+          : "";
 
       const term =
         match[4].charAt(0).toUpperCase() +
         match[4].slice(1).toLowerCase();
 
-      const year = match[5];
+      const year =
+        match[5];
 
       const course =
-        `${subject}-${number}${section ? "-" + section : ""}`;
+        `${subject}-${number}${
+          section
+            ? "-" + section
+            : ""
+        }`;
 
       results.push({
         key: `${term} ${year}|${course}`,
@@ -108,9 +127,15 @@
 
   // =========================================================
   // DISCOVER COURSES
+  //
+  // IMPORTANT:
+  //
+  // This MERGES discoveries into the existing database.
+  // It does NOT replace the database with whatever happens
+  // to be visible on the current Panopto tab.
   // =========================================================
 
-  function discoverEntries() {
+  async function discoverEntries() {
     const found = new Map();
 
     document
@@ -125,43 +150,89 @@
 
         if (
           text.length < 8 ||
-          text.length > 350
+          text.length > 500
         ) {
           return;
         }
 
         parseEntries(text).forEach(entry => {
-          found.set(entry.key, entry);
+          found.set(
+            entry.key,
+            entry
+          );
         });
       });
 
-    state.entries = [...found.values()].sort((a, b) => {
-      const ay = Number(a.year);
-      const by = Number(b.year);
 
-      if (ay !== by) {
-        return by - ay;
-      }
+    /*
+     * MERGE discovered courses with the persistent course list.
+     */
+    const merged =
+      new Map(
+        state.entries.map(entry => [
+          entry.key,
+          entry
+        ])
+      );
 
-      const termOrder = {
-        Fall: 4,
-        Summer: 3,
-        Spring: 2,
-        Winter: 1
-      };
 
-      if (
-        termOrder[a.term] !==
-        termOrder[b.term]
-      ) {
-        return (
-          termOrder[b.term] -
-          termOrder[a.term]
-        );
-      }
-
-      return a.course.localeCompare(b.course);
+    found.forEach((entry, key) => {
+      merged.set(key, entry);
     });
+
+
+    const oldLength =
+      state.entries.length;
+
+
+    state.entries =
+      [...merged.values()].sort(
+        (a, b) => {
+          const ay =
+            Number(a.year);
+
+          const by =
+            Number(b.year);
+
+          if (ay !== by) {
+            return by - ay;
+          }
+
+          const termOrder = {
+            Fall: 4,
+            Summer: 3,
+            Spring: 2,
+            Winter: 1
+          };
+
+          if (
+            termOrder[a.term] !==
+            termOrder[b.term]
+          ) {
+            return (
+              termOrder[b.term] -
+              termOrder[a.term]
+            );
+          }
+
+          return a.course.localeCompare(
+            b.course
+          );
+        }
+      );
+
+
+    /*
+     * Only save if something new was discovered.
+     */
+    if (
+      state.entries.length !==
+      oldLength
+    ) {
+      await saveState();
+    }
+
+    return found.size;
   }
 
 
@@ -176,9 +247,14 @@
       .querySelectorAll("a[href]")
       .forEach(link => {
         const href =
-          link.getAttribute("href") || "";
+          link.getAttribute("href") ||
+          "";
 
-        if (!/viewer|session/i.test(href)) {
+        if (
+          !/viewer|session/i.test(
+            href
+          )
+        ) {
           return;
         }
 
@@ -189,10 +265,11 @@
           i < 8 && parent;
           i++
         ) {
-          const text = normalize(
-            parent.innerText ||
-            parent.textContent
-          );
+          const text =
+            normalize(
+              parent.innerText ||
+              parent.textContent
+            );
 
           const rect =
             parent.getBoundingClientRect();
@@ -205,7 +282,9 @@
             text.length < 1500
           ) {
             const links =
-              parent.querySelectorAll("a[href]");
+              parent.querySelectorAll(
+                "a[href]"
+              );
 
             if (links.length <= 4) {
               cards.add(parent);
@@ -213,7 +292,8 @@
             }
           }
 
-          parent = parent.parentElement;
+          parent =
+            parent.parentElement;
         }
       });
 
@@ -232,12 +312,18 @@
 
 
   function cardMatchesSelection(card) {
-    if (state.selected.length === 0) {
+    if (
+      state.selected.length === 0
+    ) {
       return true;
     }
 
-    return getCardEntries(card).some(entry =>
-      state.selected.includes(entry.key)
+    return getCardEntries(
+      card
+    ).some(entry =>
+      state.selected.includes(
+        entry.key
+      )
     );
   }
 
@@ -247,28 +333,37 @@
   // =========================================================
 
   function applyFilter() {
-    /*
-     * Do not filter while Panopto is loading more recordings.
-     * Panopto needs the complete list available to its own
-     * lazy-loading system.
-     */
-    if (state.loadingMatches) {
+    if (
+      state.loadingMatches
+    ) {
       return;
     }
 
-    const cards = findRecordingCards();
+    const cards =
+      findRecordingCards();
 
     let visibleCount = 0;
 
     cards.forEach(card => {
       /*
-       * Always reset everything first.
-       * This is important when changing selections.
+       * Clear any previous filtering.
        */
-      card.style.removeProperty("display");
-      card.style.removeProperty("visibility");
-      card.style.removeProperty("opacity");
-      card.style.removeProperty("pointer-events");
+      card.style.removeProperty(
+        "display"
+      );
+
+      card.style.removeProperty(
+        "visibility"
+      );
+
+      card.style.removeProperty(
+        "opacity"
+      );
+
+      card.style.removeProperty(
+        "pointer-events"
+      );
+
 
       if (
         !state.enabled ||
@@ -278,27 +373,26 @@
         return;
       }
 
-      if (cardMatchesSelection(card)) {
-        /*
-         * Matching recording.
-         */
+
+      if (
+        cardMatchesSelection(card)
+      ) {
         card.style.display = "";
         visibleCount++;
       } else {
         /*
-         * IMPORTANT:
-         *
-         * Use display:none rather than visibility:hidden.
-         *
-         * visibility:hidden leaves an empty space in the
-         * Panopto grid. display:none removes the card from
-         * the layout completely.
+         * display:none removes the card from the layout,
+         * preventing blank spaces.
          */
-        card.style.display = "none";
+        card.style.display =
+          "none";
       }
     });
 
-    updatePanel(visibleCount);
+
+    updatePanel(
+      visibleCount
+    );
   }
 
 
@@ -307,12 +401,24 @@
   // =========================================================
 
   function temporarilyShowEverything() {
-    findRecordingCards().forEach(card => {
-      card.style.removeProperty("display");
-      card.style.removeProperty("visibility");
-      card.style.removeProperty("opacity");
-      card.style.removeProperty("pointer-events");
-    });
+    findRecordingCards()
+      .forEach(card => {
+        card.style.removeProperty(
+          "display"
+        );
+
+        card.style.removeProperty(
+          "visibility"
+        );
+
+        card.style.removeProperty(
+          "opacity"
+        );
+
+        card.style.removeProperty(
+          "pointer-events"
+        );
+      });
   }
 
 
@@ -321,40 +427,97 @@
   // =========================================================
 
   async function loadState() {
-    const result =
-      await chrome.storage.local.get(STORAGE_KEY);
+    /*
+     * Try the new storage key first.
+     */
+    let result =
+      await chrome.storage.local.get(
+        STORAGE_KEY
+      );
 
-    if (result[STORAGE_KEY]) {
+
+    /*
+     * If this is the first run after the update,
+     * migrate the previous V6 database.
+     */
+    if (
+      !result[STORAGE_KEY]
+    ) {
+      const old =
+        await chrome.storage.local.get(
+          "panoptoCourseFilterV6"
+        );
+
+      if (
+        old.panoptoCourseFilterV6
+      ) {
+        result = {
+          [STORAGE_KEY]:
+            old.panoptoCourseFilterV6
+        };
+      }
+    }
+
+
+    if (
+      result[STORAGE_KEY]
+    ) {
       Object.assign(
         state,
         result[STORAGE_KEY]
       );
     }
 
+
+    state.entries =
+      Array.isArray(
+        state.entries
+      )
+        ? state.entries
+        : [];
+
+
     state.currentClasses =
-      Array.isArray(state.currentClasses)
+      Array.isArray(
+        state.currentClasses
+      )
         ? state.currentClasses
         : [];
 
+
     state.selected =
-      Array.isArray(state.selected)
+      Array.isArray(
+        state.selected
+      )
         ? state.selected
         : [];
 
-    state.collapsedSemesters =
-      state.collapsedSemesters || {};
 
-    state.loadingMatches = false;
+    state.collapsedSemesters =
+      state.collapsedSemesters ||
+      {};
+
+
+    state.loadingMatches =
+      false;
   }
 
 
   async function saveState() {
     await chrome.storage.local.set({
       [STORAGE_KEY]: {
-        entries: state.entries,
-        selected: state.selected,
-        currentClasses: state.currentClasses,
-        enabled: state.enabled,
+        entries:
+          state.entries,
+
+        selected:
+          state.selected,
+
+        currentClasses:
+          state.currentClasses,
+
+        enabled:
+          state.enabled,
+
         collapsedSemesters:
           state.collapsedSemesters
       }
@@ -367,7 +530,8 @@
   // =========================================================
 
   function getCurrentTerm() {
-    const now = new Date();
+    const now =
+      new Date();
 
     const month =
       now.getMonth() + 1;
@@ -375,19 +539,28 @@
     const year =
       now.getFullYear();
 
-    if (month >= 1 && month <= 5) {
+
+    if (
+      month >= 1 &&
+      month <= 5
+    ) {
       return {
         term: "Spring",
         year
       };
     }
 
-    if (month >= 6 && month <= 7) {
+
+    if (
+      month >= 6 &&
+      month <= 7
+    ) {
       return {
         term: "Summer",
         year
       };
     }
+
 
     return {
       term: "Fall",
@@ -397,11 +570,12 @@
 
 
   // =========================================================
-  // COUNT MATCHING CARDS
+  // COUNT
   // =========================================================
 
   function countMatchingCards() {
-    const cards = findRecordingCards();
+    const cards =
+      findRecordingCards();
 
     if (
       !state.enabled ||
@@ -410,8 +584,11 @@
       return cards.length;
     }
 
-    return cards.filter(card =>
-      cardMatchesSelection(card)
+    return cards.filter(
+      card =>
+        cardMatchesSelection(
+          card
+        )
     ).length;
   }
 
@@ -421,11 +598,16 @@
   // =========================================================
 
   async function loadMatchingRecordings() {
-    if (state.loadingMatches) {
+    if (
+      state.loadingMatches
+    ) {
       return;
     }
 
-    if (state.selected.length === 0) {
+
+    if (
+      state.selected.length === 0
+    ) {
       showStatus(
         "Select at least one course first."
       );
@@ -433,29 +615,45 @@
       return;
     }
 
-    state.loadingMatches = true;
+
+    state.loadingMatches =
+      true;
 
     updateLoadingUI();
 
+
     /*
-     * Remove our filtering before Panopto starts loading.
+     * Remove filtering while Panopto loads.
      */
     temporarilyShowEverything();
+
 
     const originalScroll =
       window.scrollY;
 
-    const wait = ms =>
-      new Promise(resolve =>
-        setTimeout(resolve, ms)
-      );
 
-    const MAX_ROUNDS = 80;
+    const wait =
+      ms =>
+        new Promise(resolve =>
+          setTimeout(
+            resolve,
+            ms
+          )
+        );
+
+
+    const MAX_ROUNDS =
+      80;
+
 
     let previousCount =
-      findRecordingCards().length;
+      findRecordingCards()
+        .length;
 
-    let unchangedRounds = 0;
+
+    let unchangedRounds =
+      0;
+
 
     try {
       for (
@@ -463,90 +661,95 @@
         round < MAX_ROUNDS;
         round++
       ) {
-        if (!state.loadingMatches) {
+        if (
+          !state.loadingMatches
+        ) {
           break;
         }
 
-        /*
-         * Make absolutely sure our filter is not interfering
-         * with Panopto's loading.
-         */
+
         temporarilyShowEverything();
 
-        /*
-         * Scroll the actual page to the bottom.
-         */
+
         window.scrollTo({
           top:
             document.documentElement
               .scrollHeight,
-          behavior: "instant"
+
+          behavior:
+            "instant"
         });
 
-        /*
-         * Let the scroll event fire.
-         */
+
         await wait(400);
 
-        /*
-         * Give Panopto time to request/render more videos.
-         */
         await wait(1000);
 
+
         const newCount =
-          findRecordingCards().length;
+          findRecordingCards()
+            .length;
+
 
         updateLoadingUI(
           round + 1,
           newCount
         );
 
-        if (newCount > previousCount) {
+
+        if (
+          newCount >
+          previousCount
+        ) {
           unchangedRounds = 0;
-          previousCount = newCount;
+
+          previousCount =
+            newCount;
 
           await wait(300);
 
           continue;
         }
 
+
         unchangedRounds++;
 
-        /*
-         * Require several consecutive rounds with no new
-         * recordings before assuming we've reached the end.
-         */
-        if (unchangedRounds >= 5) {
+
+        if (
+          unchangedRounds >= 5
+        ) {
           break;
         }
 
+
         await wait(500);
       }
+
     } finally {
-      state.loadingMatches = false;
+      state.loadingMatches =
+        false;
+
+
+      await discoverEntries();
+
 
       /*
-       * Discover newly loaded course information.
-       */
-      discoverEntries();
-
-      /*
-       * NOW restore the filter.
-       *
-       * Because nonmatching cards use display:none, they no
-       * longer leave blank spaces in the grid.
+       * Restore filtering only after loading is done.
        */
       applyFilter();
 
-      /*
-       * Return to where the user started.
-       */
+
       window.scrollTo({
-        top: originalScroll,
-        behavior: "instant"
+        top:
+          originalScroll,
+
+        behavior:
+          "instant"
       });
 
+
       updateLoadingUI();
+
 
       showStatus(
         `Finished loading. ${countMatchingCards()} matching recordings.`
@@ -556,13 +759,16 @@
 
 
   function stopLoadingMatches() {
-    state.loadingMatches = false;
+    state.loadingMatches =
+      false;
+
 
     discoverEntries();
 
     applyFilter();
 
     updateLoadingUI();
+
 
     showStatus(
       "Loading stopped."
@@ -576,31 +782,42 @@
 
   let statusTimer;
 
+
   function showStatus(message) {
     const status =
       document.getElementById(
         "pcf-status"
       );
 
+
     if (!status) {
       return;
     }
 
+
     status.textContent =
       message;
+
 
     status.classList.add(
       "pcf-status-visible"
     );
 
-    clearTimeout(statusTimer);
+
+    clearTimeout(
+      statusTimer
+    );
+
 
     statusTimer =
-      setTimeout(() => {
-        status.classList.remove(
-          "pcf-status-visible"
-        );
-      }, 4500);
+      setTimeout(
+        () => {
+          status.classList.remove(
+            "pcf-status-visible"
+          );
+        },
+        4500
+      );
   }
 
 
@@ -617,36 +834,50 @@
         "pcf-load-matching"
       );
 
+
     if (!button) {
       return;
     }
 
-    if (state.loadingMatches) {
+
+    if (
+      state.loadingMatches
+    ) {
       button.textContent =
         count !== null
           ? `⏳ Loading… ${count} recordings`
           : "⏳ Loading recordings…";
 
+
       button.classList.add(
         "pcf-loading"
       );
 
-      button.disabled = false;
+
+      button.disabled =
+        false;
+
 
       button.onclick =
         stopLoadingMatches;
 
+
       return;
     }
 
+
     button.textContent =
       "🔎 Load Matching Recordings";
+
 
     button.classList.remove(
       "pcf-loading"
     );
 
-    button.disabled = false;
+
+    button.disabled =
+      false;
+
 
     button.onclick =
       loadMatchingRecordings;
@@ -666,11 +897,16 @@
       return;
     }
 
+
     const panel =
-      document.createElement("div");
+      document.createElement(
+        "div"
+      );
+
 
     panel.id =
       "pcf-panel";
+
 
     panel.innerHTML = `
       <div class="pcf-header">
@@ -749,16 +985,20 @@
       </div>
     `;
 
-    document.body.appendChild(panel);
+
+    document.body.appendChild(
+      panel
+    );
 
 
     document.getElementById(
       "pcf-close"
-    ).onclick = () => {
-      panel.classList.add(
-        "pcf-hidden"
-      );
-    };
+    ).onclick =
+      () => {
+        panel.classList.add(
+          "pcf-hidden"
+        );
+      };
 
 
     document.getElementById(
@@ -769,99 +1009,115 @@
 
     document.getElementById(
       "pcf-enabled"
-    ).onchange = async event => {
-      state.enabled =
-        event.target.checked;
+    ).onchange =
+      async event => {
+        state.enabled =
+          event.target.checked;
 
-      await saveState();
+        await saveState();
 
-      applyFilter();
-    };
+        applyFilter();
+      };
 
 
     document.getElementById(
       "pcf-search"
-    ).oninput = () => {
-      updatePanel();
-    };
+    ).oninput =
+      () => {
+        updatePanel();
+      };
 
 
     document.getElementById(
       "pcf-none"
-    ).onclick = async () => {
-      state.selected = [];
+    ).onclick =
+      async () => {
+        state.selected = [];
 
-      await saveState();
+        await saveState();
 
-      applyFilter();
-    };
+        applyFilter();
+      };
 
 
     document.getElementById(
       "pcf-current-semester"
-    ).onclick = async () => {
-      const current =
-        getCurrentTerm();
+    ).onclick =
+      async () => {
+        const current =
+          getCurrentTerm();
 
-      state.selected =
-        state.entries
-          .filter(entry =>
-            entry.term ===
-              current.term &&
-            Number(entry.year) ===
-              current.year
-          )
-          .map(entry =>
-            entry.key
-          );
 
-      await saveState();
+        state.selected =
+          state.entries
+            .filter(entry =>
+              entry.term ===
+                current.term &&
+              Number(
+                entry.year
+              ) ===
+                current.year
+            )
+            .map(entry =>
+              entry.key
+            );
 
-      applyFilter();
-    };
+
+        await saveState();
+
+        applyFilter();
+      };
 
 
     document.getElementById(
       "pcf-use-current"
-    ).onclick = async () => {
-      state.selected =
-        [...state.currentClasses];
+    ).onclick =
+      async () => {
+        state.selected =
+          [
+            ...state.currentClasses
+          ];
 
-      await saveState();
+        await saveState();
 
-      applyFilter();
-    };
+        applyFilter();
+      };
 
 
     document.getElementById(
       "pcf-save-current"
-    ).onclick = async () => {
-      state.currentClasses =
-        [...state.selected];
+    ).onclick =
+      async () => {
+        state.currentClasses =
+          [
+            ...state.selected
+          ];
 
-      await saveState();
+        await saveState();
 
-      updatePanel();
+        updatePanel();
 
-      showStatus(
-        `Saved ${state.currentClasses.length} current classes.`
-      );
-    };
+        showStatus(
+          `Saved ${state.currentClasses.length} current classes.`
+        );
+      };
 
 
     document.getElementById(
       "pcf-clear-current"
-    ).onclick = async () => {
-      state.currentClasses = [];
+    ).onclick =
+      async () => {
+        state.currentClasses =
+          [];
 
-      await saveState();
+        await saveState();
 
-      updatePanel();
+        updatePanel();
 
-      showStatus(
-        "Saved current classes cleared."
-      );
-    };
+        showStatus(
+          "Saved current classes cleared."
+        );
+      };
 
 
     document.getElementById(
@@ -872,15 +1128,16 @@
 
     document.getElementById(
       "pcf-refresh"
-    ).onclick = () => {
-      discoverEntries();
+    ).onclick =
+      async () => {
+        await discoverEntries();
 
-      applyFilter();
+        applyFilter();
 
-      showStatus(
-        "Scan complete."
-      );
-    };
+        showStatus(
+          `Scan complete. ${state.entries.length} courses in database.`
+        );
+      };
 
 
     updateLoadingUI();
@@ -899,9 +1156,11 @@
         "pcf-course-list"
       );
 
+
     if (!list) {
       return;
     }
+
 
     const search =
       normalize(
@@ -910,7 +1169,9 @@
         ).value
       ).toUpperCase();
 
+
     list.innerHTML = "";
+
 
     const groups =
       new Map();
@@ -922,21 +1183,30 @@
           entryLabel(entry)
             .toUpperCase();
 
+
         return (
           !search ||
-          label.includes(search)
+          label.includes(
+            search
+          )
         );
       })
+
+
       .forEach(entry => {
         const group =
           semesterKey(entry);
 
-        if (!groups.has(group)) {
+
+        if (
+          !groups.has(group)
+        ) {
           groups.set(
             group,
             []
           );
         }
+
 
         groups
           .get(group)
@@ -951,14 +1221,17 @@
             "div"
           );
 
+
         semesterHeader.className =
           "pcf-semester-header";
+
 
         const collapsed =
           !!state
             .collapsedSemesters[
             semester
           ];
+
 
         semesterHeader.innerHTML = `
           <button class="pcf-semester-toggle">
@@ -972,6 +1245,7 @@
           </button>
         `;
 
+
         list.appendChild(
           semesterHeader
         );
@@ -982,8 +1256,10 @@
             "div"
           );
 
+
         semesterCourses.className =
           "pcf-semester-courses";
+
 
         if (collapsed) {
           semesterCourses.style.display =
@@ -997,13 +1273,15 @@
           )
           .onclick =
           async () => {
-            state.collapsedSemesters[
+            state
+              .collapsedSemesters[
               semester
             ] =
               !state
                 .collapsedSemesters[
                 semester
               ];
+
 
             await saveState();
 
@@ -1025,6 +1303,7 @@
                   entry.key
               );
 
+
             const allSelected =
               keys.every(key =>
                 state.selected.includes(
@@ -1032,7 +1311,10 @@
                 )
               );
 
-            if (allSelected) {
+
+            if (
+              allSelected
+            ) {
               state.selected =
                 state.selected.filter(
                   key =>
@@ -1040,19 +1322,23 @@
                       key
                     )
                 );
+
             } else {
-              keys.forEach(key => {
-                if (
-                  !state.selected.includes(
-                    key
-                  )
-                ) {
-                  state.selected.push(
-                    key
-                  );
+              keys.forEach(
+                key => {
+                  if (
+                    !state.selected.includes(
+                      key
+                    )
+                  ) {
+                    state.selected.push(
+                      key
+                    );
+                  }
                 }
-              });
+              );
             }
+
 
             await saveState();
 
@@ -1060,105 +1346,118 @@
           };
 
 
-        entries.forEach(entry => {
-          const label =
-            document.createElement(
-              "label"
-            );
-
-          label.className =
-            "pcf-course";
-
-
-          if (
-            state.currentClasses.includes(
-              entry.key
-            )
-          ) {
-            label.classList.add(
-              "pcf-current-class"
-            );
-          }
-
-
-          const checkbox =
-            document.createElement(
-              "input"
-            );
-
-          checkbox.type =
-            "checkbox";
-
-          checkbox.checked =
-            state.selected.includes(
-              entry.key
-            );
-
-
-          checkbox.onchange =
-            async () => {
-              if (checkbox.checked) {
-                if (
-                  !state.selected.includes(
-                    entry.key
-                  )
-                ) {
-                  state.selected.push(
-                    entry.key
-                  );
-                }
-              } else {
-                state.selected =
-                  state.selected.filter(
-                    key =>
-                      key !==
-                      entry.key
-                  );
-              }
-
-              await saveState();
-
-              applyFilter();
-            };
-
-
-          label.append(
-            checkbox,
-            document.createTextNode(
-              entry.course
-            )
-          );
-
-
-          if (
-            state.currentClasses.includes(
-              entry.key
-            )
-          ) {
-            const star =
+        entries.forEach(
+          entry => {
+            const label =
               document.createElement(
-                "span"
+                "label"
               );
 
-            star.className =
-              "pcf-star";
 
-            star.textContent =
-              " ★";
+            label.className =
+              "pcf-course";
 
-            star.title =
-              "Saved as a current class";
 
-            label.appendChild(
-              star
+            if (
+              state.currentClasses.includes(
+                entry.key
+              )
+            ) {
+              label.classList.add(
+                "pcf-current-class"
+              );
+            }
+
+
+            const checkbox =
+              document.createElement(
+                "input"
+              );
+
+
+            checkbox.type =
+              "checkbox";
+
+
+            checkbox.checked =
+              state.selected.includes(
+                entry.key
+              );
+
+
+            checkbox.onchange =
+              async () => {
+                if (
+                  checkbox.checked
+                ) {
+                  if (
+                    !state.selected.includes(
+                      entry.key
+                    )
+                  ) {
+                    state.selected.push(
+                      entry.key
+                    );
+                  }
+
+                } else {
+                  state.selected =
+                    state.selected.filter(
+                      key =>
+                        key !==
+                        entry.key
+                    );
+                }
+
+
+                await saveState();
+
+                applyFilter();
+              };
+
+
+            label.append(
+              checkbox,
+              document.createTextNode(
+                entry.course
+              )
+            );
+
+
+            if (
+              state.currentClasses.includes(
+                entry.key
+              )
+            ) {
+              const star =
+                document.createElement(
+                  "span"
+                );
+
+
+              star.className =
+                "pcf-star";
+
+
+              star.textContent =
+                " ★";
+
+
+              star.title =
+                "Saved as a current class";
+
+
+              label.appendChild(
+                star
+              );
+            }
+
+
+            semesterCourses.appendChild(
+              label
             );
           }
-
-
-          semesterCourses.appendChild(
-            label
-          );
-        });
+        );
 
 
         list.appendChild(
@@ -1168,7 +1467,9 @@
     );
 
 
-    if (matchingCount === null) {
+    if (
+      matchingCount === null
+    ) {
       matchingCount =
         countMatchingCards();
     }
@@ -1176,6 +1477,7 @@
 
     const selectedCount =
       state.selected.length;
+
 
     const currentCount =
       state.currentClasses.length;
@@ -1225,29 +1527,33 @@
       return;
     }
 
+
     const button =
       document.createElement(
         "button"
       );
 
+
     button.id =
       "pcf-launcher";
+
 
     button.textContent =
       "🎓 Courses";
 
 
-    button.onclick = () => {
-      document
-        .getElementById(
-          "pcf-panel"
-        )
-        .classList.remove(
-          "pcf-hidden"
-        );
+    button.onclick =
+      () => {
+        document
+          .getElementById(
+            "pcf-panel"
+          )
+          .classList.remove(
+            "pcf-hidden"
+          );
 
-      updatePanel();
-    };
+        updatePanel();
+      };
 
 
     document.body.appendChild(
@@ -1257,28 +1563,109 @@
 
 
   // =========================================================
-  // RESCAN
+  // SMART RESCAN
   // =========================================================
 
   let scanTimer;
 
-  function rescan() {
-    /*
-     * Never run normal filtering while the automatic loader
-     * is active.
-     */
-    if (state.loadingMatches) {
+  let lastUrl =
+    location.href;
+
+
+  function scheduleRescan(
+    delay = 300
+  ) {
+    if (
+      state.loadingMatches
+    ) {
       return;
     }
 
-    clearTimeout(scanTimer);
+
+    clearTimeout(
+      scanTimer
+    );
+
 
     scanTimer =
-      setTimeout(() => {
-        discoverEntries();
+      setTimeout(
+        async () => {
+          await discoverEntries();
 
-        applyFilter();
-      }, 300);
+          applyFilter();
+        },
+        delay
+      );
+  }
+
+
+  function rescan() {
+    if (
+      state.loadingMatches
+    ) {
+      return;
+    }
+
+
+    scheduleRescan(300);
+  }
+
+
+  /*
+   * Panopto is a SPA, so URL changes may happen without a
+   * normal page reload.
+   */
+  function watchForPageChanges() {
+    setInterval(
+      () => {
+        if (
+          location.href !==
+          lastUrl
+        ) {
+          lastUrl =
+            location.href;
+
+          /*
+           * Give Panopto time to render the new tab.
+           */
+          scheduleRescan(
+            500
+          );
+
+          /*
+           * Then do a few additional scans because Shared
+           * With Me may populate asynchronously.
+           */
+          setTimeout(
+            () => {
+              scheduleRescan(
+                100
+              );
+            },
+            1500
+          );
+
+          setTimeout(
+            () => {
+              scheduleRescan(
+                100
+              );
+            },
+            3000
+          );
+
+          setTimeout(
+            () => {
+              scheduleRescan(
+                100
+              );
+            },
+            5000
+          );
+        }
+      },
+      500
+    );
   }
 
 
@@ -1289,15 +1676,24 @@
   async function init() {
     await loadState();
 
+
     createPanel();
 
     createLauncher();
 
-    discoverEntries();
+
+    /*
+     * First scan discovers courses from the current page.
+     */
+    await discoverEntries();
+
 
     applyFilter();
 
 
+    /*
+     * Watch Panopto's dynamically generated content.
+     */
     const observer =
       new MutationObserver(
         rescan
@@ -1313,12 +1709,41 @@
     );
 
 
+    /*
+     * Scrolling can expose additional Panopto content.
+     */
     window.addEventListener(
       "scroll",
       rescan,
       {
         passive: true
       }
+    );
+
+
+    /*
+     * Watch Home / Shared With Me / other SPA navigation.
+     */
+    watchForPageChanges();
+
+
+    /*
+     * Extra initial scans in case Panopto hasn't finished
+     * rendering its first page yet.
+     */
+    setTimeout(
+      () => scheduleRescan(0),
+      1000
+    );
+
+    setTimeout(
+      () => scheduleRescan(0),
+      2500
+    );
+
+    setTimeout(
+      () => scheduleRescan(0),
+      5000
     );
   }
 
