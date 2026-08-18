@@ -10,98 +10,85 @@
   };
 
   const COURSE_RE =
-    /\b([A-Z]{2,8})\s*[-:]?\s*(\d{3,5})\b/gi;
+    /\b([A-Z]{2,8})[-\s]+(\d{3,5})(?:[-\s]+[A-Z0-9]{1,8})?\b/gi;
 
   function normalize(text) {
-    return (text || "").replace(/\s+/g, " ").trim();
+    return (text || "")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
-  function extractCourses(text) {
-    const result = new Set();
+  function extractCourseCodes(text) {
+    const courses = new Set();
 
     COURSE_RE.lastIndex = 0;
 
     let match;
 
     while ((match = COURSE_RE.exec(text || ""))) {
-      result.add(
+      courses.add(
         `${match[1].toUpperCase()}-${match[2]}`
       );
     }
 
-    return [...result];
-  }
-
-  function looksLikeVideoLink(link) {
-    const href = link.getAttribute("href") || "";
-
-    return (
-      /viewer/i.test(href) ||
-      /session/i.test(href) ||
-      /recording/i.test(href)
-    );
-  }
-
-  /*
-   * Find the smallest ancestor that represents ONE recording.
-   *
-   * The old version could climb into a whole Panopto section
-   * containing several recordings. This version deliberately
-   * stops much sooner.
-   */
-  function findRecordingCard(link) {
-    let element = link;
-
-    for (let depth = 0; depth < 10 && element; depth++) {
-      const rect = element.getBoundingClientRect();
-
-      if (
-        rect.width > 150 &&
-        rect.height > 100 &&
-        rect.height < 700
-      ) {
-        const descendantVideoLinks = [
-          ...element.querySelectorAll("a[href]")
-        ].filter(looksLikeVideoLink);
-
-        /*
-         * An individual recording should normally contain one
-         * viewer/session link.
-         */
-        if (descendantVideoLinks.length === 1) {
-          const text = normalize(element.innerText);
-
-          if (
-            text.length >= 20 &&
-            text.length <= 1200
-          ) {
-            return element;
-          }
-        }
-      }
-
-      element = element.parentElement;
-    }
-
-    return null;
+    return [...courses];
   }
 
   function findRecordingCards() {
     const cards = new Set();
 
-    document
-      .querySelectorAll("a[href]")
-      .forEach(link => {
-        if (!looksLikeVideoLink(link)) {
-          return;
+    // Find text nodes/elements containing course metadata.
+    const elements = document.querySelectorAll(
+      "div, span, p, a"
+    );
+
+    elements.forEach(element => {
+      const text = normalize(
+        element.innerText || element.textContent
+      );
+
+      // We specifically want Panopto's semester-course format.
+      if (
+        !/(Fall|Spring|Summer|Winter)\s+\d{4}/i.test(text)
+      ) {
+        return;
+      }
+
+      const courses = extractCourseCodes(text);
+
+      if (courses.length === 0) {
+        return;
+      }
+
+      /*
+       * Don't immediately hide this element.
+       * Walk upward until we find the individual visual
+       * recording card.
+       */
+      let parent = element;
+
+      for (let i = 0; i < 8 && parent; i++) {
+        const rect =
+          parent.getBoundingClientRect();
+
+        const parentText = normalize(
+          parent.innerText || parent.textContent
+        );
+
+        // Individual Panopto cards are reasonably sized.
+        if (
+          rect.width > 200 &&
+          rect.height > 150 &&
+          rect.height < 650 &&
+          parentText.length < 1000
+        ) {
+          cards.add(parent);
+          break;
         }
 
-        const card = findRecordingCard(link);
-
-        if (card) {
-          cards.add(card);
-        }
-      });
+        parent = parent.parentElement;
+      }
+    });
 
     return [...cards];
   }
@@ -109,34 +96,37 @@
   function discoverCourses() {
     const found = new Set();
 
-    /*
-     * Only look at relatively small elements so we don't
-     * accidentally extract "Fall 2026" or courses from an
-     * entire page section.
-     */
-    document
-      .querySelectorAll(
-        "a, button, [role='treeitem'], [class*='card'], [class*='Card']"
-      )
-      .forEach(element => {
-        const text = normalize(
-          element.innerText || element.textContent
-        );
+    document.querySelectorAll(
+      "div, span, p, a, button"
+    ).forEach(element => {
+      const text = normalize(
+        element.innerText || element.textContent
+      );
 
-        if (
-          text.length >= 10 &&
-          text.length <= 500
-        ) {
-          extractCourses(text).forEach(course => {
-            found.add(course);
-          });
-        }
-      });
+      if (
+        text.length > 500 ||
+        text.length < 5
+      ) {
+        return;
+      }
 
-    /*
-     * Only keep actual course-number combinations.
-     * This removes things such as FALL-2026 and SPRING-2026.
-     */
+      /*
+       * Only extract from actual semester/course strings.
+       * This prevents FALL-2026 and SPRING-2026 from
+       * becoming fake courses.
+       */
+      if (
+        !/(Fall|Spring|Summer|Winter)\s+\d{4}/i.test(
+          text
+        )
+      ) {
+        return;
+      }
+
+      extractCourseCodes(text)
+        .forEach(course => found.add(course));
+    });
+
     state.courses = [...found]
       .filter(course =>
         /^[A-Z]{2,8}-\d{3,5}$/.test(course)
@@ -144,46 +134,56 @@
       .sort();
   }
 
-  function cardMatchesSelection(card) {
-    const text = normalize(card.innerText);
-
-    const courses = extractCourses(text);
-
-    return courses.some(course =>
-      state.selected.includes(course)
+  function getCardCourses(card) {
+    return extractCourseCodes(
+      normalize(
+        card.innerText || card.textContent
+      )
     );
   }
 
   function applyFilter() {
     const cards = findRecordingCards();
 
+    console.log(
+      "[Panopto Course Filter] cards found:",
+      cards.length
+    );
+
     cards.forEach(card => {
-      if (!state.enabled || state.selected.length === 0) {
+      if (
+        !state.enabled ||
+        state.selected.length === 0
+      ) {
         card.style.display = "";
-        card.removeAttribute("data-pcf-hidden");
         return;
       }
 
-      const matches = cardMatchesSelection(card);
+      const cardCourses =
+        getCardCourses(card);
 
-      card.style.display = matches ? "" : "none";
-      card.setAttribute(
-        "data-pcf-hidden",
-        matches ? "false" : "true"
-      );
+      const matches =
+        cardCourses.some(course =>
+          state.selected.includes(course)
+        );
+
+      card.style.display =
+        matches ? "" : "none";
     });
 
     updatePanel();
   }
 
   async function loadState() {
-    const saved =
-      await chrome.storage.local.get(STORAGE_KEY);
+    const result =
+      await chrome.storage.local.get(
+        STORAGE_KEY
+      );
 
-    if (saved[STORAGE_KEY]) {
+    if (result[STORAGE_KEY]) {
       Object.assign(
         state,
-        saved[STORAGE_KEY]
+        result[STORAGE_KEY]
       );
     }
   }
@@ -196,7 +196,9 @@
 
   function createPanel() {
     if (
-      document.getElementById("pcf-panel")
+      document.getElementById(
+        "pcf-panel"
+      )
     ) {
       return;
     }
@@ -229,7 +231,10 @@
       </div>
 
       <label class="pcf-toggle">
-        <input id="pcf-enabled" type="checkbox">
+        <input
+          id="pcf-enabled"
+          type="checkbox"
+        >
         Filter recordings
       </label>
 
@@ -237,7 +242,9 @@
 
       <div class="pcf-footer">
         <span id="pcf-count"></span>
-        <button id="pcf-refresh">↻ Scan</button>
+        <button id="pcf-refresh">
+          ↻ Scan
+        </button>
       </div>
     `;
 
@@ -289,39 +296,40 @@
     };
 
     /*
-     * "Current" selects courses whose recordings/folders
-     * contain the current year.
+     * Select courses that have recordings from
+     * the current calendar year.
      */
     document.getElementById(
       "pcf-current"
     ).onclick = async () => {
-      const currentYear =
+      const year =
         new Date().getFullYear();
 
       const current =
         new Set();
 
-      document
-        .querySelectorAll(
-          "a, button, [role='treeitem'], [class*='card'], [class*='Card']"
-        )
-        .forEach(element => {
-          const text = normalize(
-            element.innerText ||
-            element.textContent
-          );
+      document.querySelectorAll(
+        "div, span, p, a"
+      ).forEach(element => {
+        const text = normalize(
+          element.innerText ||
+          element.textContent
+        );
 
-          if (
-            text.includes(
-              String(currentYear)
-            )
-          ) {
-            extractCourses(text)
-              .forEach(course =>
-                current.add(course)
-              );
-          }
-        });
+        if (
+          text.includes(
+            String(year)
+          ) &&
+          /(Fall|Spring|Summer|Winter)/i.test(
+            text
+          )
+        ) {
+          extractCourseCodes(text)
+            .forEach(course =>
+              current.add(course)
+            );
+        }
+      });
 
       state.selected =
         [...current].filter(course =>
@@ -346,7 +354,9 @@
         "pcf-course-list"
       );
 
-    if (!list) return;
+    if (!list) {
+      return;
+    }
 
     const search =
       normalize(
@@ -376,7 +386,8 @@
             "input"
           );
 
-        checkbox.type = "checkbox";
+        checkbox.type =
+          "checkbox";
 
         checkbox.checked =
           state.selected.includes(
@@ -463,8 +474,9 @@
     clearTimeout(timer);
 
     timer = setTimeout(() => {
+      discoverCourses();
       applyFilter();
-    }, 400);
+    }, 700);
   }
 
   async function init() {
