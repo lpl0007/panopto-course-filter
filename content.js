@@ -1,16 +1,19 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "panoptoCourseFilter";
+  const STORAGE_KEY = "panoptoCourseFilterV4";
 
   const state = {
-    courses: [],
+    entries: [],
     selected: [],
     enabled: true
   };
 
-  const COURSE_RE =
-    /\b([A-Z]{2,8})[-\s]+(\d{3,5})(?:[-\s]+[A-Z0-9]{1,8})?\b/gi;
+  const FORWARD_RE =
+    /\b(Fall|Spring|Summer|Winter)\s+(\d{4})\s*[-–—]\s*([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\b/gi;
+
+  const REVERSE_RE =
+    /\b([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\s*\(\s*(Fall|Spring|Summer|Winter)\s+(\d{4})\s*\)/gi;
 
   function normalize(text) {
     return (text || "")
@@ -18,136 +21,253 @@
       .trim();
   }
 
-  function extractCourseCodes(text) {
-    const courses = new Set();
+  function parseEntries(text) {
+    const results = [];
 
-    COURSE_RE.lastIndex = 0;
+    text = normalize(text);
 
     let match;
 
-    while ((match = COURSE_RE.exec(text || ""))) {
-      courses.add(
-        `${match[1].toUpperCase()}-${match[2]}`
-      );
+    FORWARD_RE.lastIndex = 0;
+
+    while ((match = FORWARD_RE.exec(text))) {
+      const term = match[1]
+        .charAt(0)
+        .toUpperCase() +
+        match[1]
+          .slice(1)
+          .toLowerCase();
+
+      const year = match[2];
+
+      const subject =
+        match[3].toUpperCase();
+
+      const number = match[4];
+
+      const section = match[5]
+        ? match[5].toUpperCase()
+        : "";
+
+      const course =
+        `${subject}-${number}${section ? "-" + section : ""}`;
+
+      results.push({
+        key: `${term} ${year}|${course}`,
+        term,
+        year,
+        course
+      });
     }
 
-    return [...courses];
+    REVERSE_RE.lastIndex = 0;
+
+    while ((match = REVERSE_RE.exec(text))) {
+      const subject =
+        match[1].toUpperCase();
+
+      const number = match[2];
+
+      const section = match[3]
+        ? match[3].toUpperCase()
+        : "";
+
+      const term =
+        match[4]
+          .charAt(0)
+          .toUpperCase() +
+        match[4]
+          .slice(1)
+          .toLowerCase();
+
+      const year = match[5];
+
+      const course =
+        `${subject}-${number}${section ? "-" + section : ""}`;
+
+      results.push({
+        key: `${term} ${year}|${course}`,
+        term,
+        year,
+        course
+      });
+    }
+
+    return results;
+  }
+
+  function entryLabel(entry) {
+    return `${entry.term} ${entry.year} — ${entry.course}`;
+  }
+
+  function discoverEntries() {
+    const found = new Map();
+
+    document
+      .querySelectorAll(
+        "a, span, p, [role='treeitem'], [class*='card'], [class*='Card']"
+      )
+      .forEach(element => {
+        const text = normalize(
+          element.innerText ||
+          element.textContent
+        );
+
+        if (
+          text.length < 8 ||
+          text.length > 350
+        ) {
+          return;
+        }
+
+        const entries =
+          parseEntries(text);
+
+        entries.forEach(entry => {
+          found.set(
+            entry.key,
+            entry
+          );
+        });
+      });
+
+    state.entries = [...found.values()]
+      .sort((a, b) => {
+        const ay =
+          Number(a.year);
+
+        const by =
+          Number(b.year);
+
+        if (ay !== by) {
+          return by - ay;
+        }
+
+        const termOrder = {
+          Fall: 4,
+          Summer: 3,
+          Spring: 2,
+          Winter: 1
+        };
+
+        if (
+          termOrder[a.term] !==
+          termOrder[b.term]
+        ) {
+          return (
+            termOrder[b.term] -
+            termOrder[a.term]
+          );
+        }
+
+        return a.course.localeCompare(
+          b.course
+        );
+      });
   }
 
   function findRecordingCards() {
     const cards = new Set();
 
-    // Find text nodes/elements containing course metadata.
-    const elements = document.querySelectorAll(
-      "div, span, p, a"
-    );
+    document
+      .querySelectorAll("a[href]")
+      .forEach(link => {
+        const href =
+          link.getAttribute("href") ||
+          "";
 
-    elements.forEach(element => {
-      const text = normalize(
-        element.innerText || element.textContent
-      );
-
-      // We specifically want Panopto's semester-course format.
-      if (
-        !/(Fall|Spring|Summer|Winter)\s+\d{4}/i.test(text)
-      ) {
-        return;
-      }
-
-      const courses = extractCourseCodes(text);
-
-      if (courses.length === 0) {
-        return;
-      }
-
-      /*
-       * Don't immediately hide this element.
-       * Walk upward until we find the individual visual
-       * recording card.
-       */
-      let parent = element;
-
-      for (let i = 0; i < 8 && parent; i++) {
-        const rect =
-          parent.getBoundingClientRect();
-
-        const parentText = normalize(
-          parent.innerText || parent.textContent
-        );
-
-        // Individual Panopto cards are reasonably sized.
         if (
-          rect.width > 200 &&
-          rect.height > 150 &&
-          rect.height < 650 &&
-          parentText.length < 1000
+          !/viewer|session/i.test(
+            href
+          )
         ) {
-          cards.add(parent);
-          break;
+          return;
         }
 
-        parent = parent.parentElement;
-      }
-    });
+        let parent = link;
+
+        for (
+          let i = 0;
+          i < 8 && parent;
+          i++
+        ) {
+          const text = normalize(
+            parent.innerText ||
+            parent.textContent
+          );
+
+          const rect =
+            parent.getBoundingClientRect();
+
+          /*
+           * An individual recording card should contain
+           * a reasonable amount of text but not an entire
+           * Panopto page section.
+           */
+          if (
+            rect.width > 150 &&
+            rect.height > 100 &&
+            rect.height < 800 &&
+            text.length >= 15 &&
+            text.length < 1500
+          ) {
+            const links =
+              parent.querySelectorAll(
+                "a[href]"
+              );
+
+            if (
+              links.length <= 4
+            ) {
+              cards.add(parent);
+              break;
+            }
+          }
+
+          parent =
+            parent.parentElement;
+        }
+      });
 
     return [...cards];
   }
 
-  function discoverCourses() {
-    const found = new Set();
+  function getCardEntries(card) {
+    const text = normalize(
+      card.innerText ||
+      card.textContent
+    );
 
-    document.querySelectorAll(
-      "div, span, p, a, button"
-    ).forEach(element => {
-      const text = normalize(
-        element.innerText || element.textContent
-      );
-
-      if (
-        text.length > 500 ||
-        text.length < 5
-      ) {
-        return;
-      }
-
-      /*
-       * Only extract from actual semester/course strings.
-       * This prevents FALL-2026 and SPRING-2026 from
-       * becoming fake courses.
-       */
-      if (
-        !/(Fall|Spring|Summer|Winter)\s+\d{4}/i.test(
-          text
-        )
-      ) {
-        return;
-      }
-
-      extractCourseCodes(text)
-        .forEach(course => found.add(course));
-    });
-
-    state.courses = [...found]
-      .filter(course =>
-        /^[A-Z]{2,8}-\d{3,5}$/.test(course)
-      )
-      .sort();
+    return parseEntries(text);
   }
 
-  function getCardCourses(card) {
-    return extractCourseCodes(
-      normalize(
-        card.innerText || card.textContent
+  function cardMatchesSelection(card) {
+    if (
+      state.selected.length === 0
+    ) {
+      return true;
+    }
+
+    const entries =
+      getCardEntries(card);
+
+    return entries.some(entry =>
+      state.selected.includes(
+        entry.key
       )
     );
   }
 
   function applyFilter() {
-    const cards = findRecordingCards();
+    const cards =
+      findRecordingCards();
 
     console.log(
-      "[Panopto Course Filter] cards found:",
-      cards.length
+      "[Panopto Course Filter]",
+      "recording cards:",
+      cards.length,
+      "selected:",
+      state.selected
     );
 
     cards.forEach(card => {
@@ -159,16 +279,10 @@
         return;
       }
 
-      const cardCourses =
-        getCardCourses(card);
-
-      const matches =
-        cardCourses.some(course =>
-          state.selected.includes(course)
-        );
-
       card.style.display =
-        matches ? "" : "none";
+        cardMatchesSelection(card)
+          ? ""
+          : "none";
     });
 
     updatePanel();
@@ -180,7 +294,9 @@
         STORAGE_KEY
       );
 
-    if (result[STORAGE_KEY]) {
+    if (
+      result[STORAGE_KEY]
+    ) {
       Object.assign(
         state,
         result[STORAGE_KEY]
@@ -194,6 +310,35 @@
     });
   }
 
+  function getCurrentTerm() {
+    const now = new Date();
+
+    const month =
+      now.getMonth() + 1;
+
+    const year =
+      now.getFullYear();
+
+    if (month >= 1 && month <= 5) {
+      return {
+        term: "Spring",
+        year
+      };
+    }
+
+    if (month >= 6 && month <= 7) {
+      return {
+        term: "Summer",
+        year
+      };
+    }
+
+    return {
+      term: "Fall",
+      year
+    };
+  }
+
   function createPanel() {
     if (
       document.getElementById(
@@ -204,9 +349,12 @@
     }
 
     const panel =
-      document.createElement("div");
+      document.createElement(
+        "div"
+      );
 
-    panel.id = "pcf-panel";
+    panel.id =
+      "pcf-panel";
 
     panel.innerHTML = `
       <div class="pcf-header">
@@ -215,7 +363,7 @@
       </div>
 
       <div class="pcf-description">
-        Select the classes you want to see.
+        Select specific semester/course sections.
       </div>
 
       <input
@@ -225,9 +373,17 @@
       >
 
       <div class="pcf-buttons">
-        <button id="pcf-current">Current</button>
-        <button id="pcf-all">All</button>
-        <button id="pcf-none">None</button>
+        <button id="pcf-current">
+          Current
+        </button>
+
+        <button id="pcf-all">
+          All
+        </button>
+
+        <button id="pcf-none">
+          None
+        </button>
       </div>
 
       <label class="pcf-toggle">
@@ -242,13 +398,16 @@
 
       <div class="pcf-footer">
         <span id="pcf-count"></span>
+
         <button id="pcf-refresh">
           ↻ Scan
         </button>
       </div>
     `;
 
-    document.body.appendChild(panel);
+    document.body.appendChild(
+      panel
+    );
 
     document.getElementById(
       "pcf-close"
@@ -260,92 +419,79 @@
 
     document.getElementById(
       "pcf-enabled"
-    ).checked = state.enabled;
+    ).checked =
+      state.enabled;
 
     document.getElementById(
       "pcf-enabled"
-    ).onchange = async event => {
-      state.enabled =
-        event.target.checked;
+    ).onchange =
+      async event => {
+        state.enabled =
+          event.target.checked;
 
-      await saveState();
-      applyFilter();
-    };
+        await saveState();
+        applyFilter();
+      };
 
     document.getElementById(
       "pcf-search"
-    ).oninput = updatePanel;
-
-    document.getElementById(
-      "pcf-all"
-    ).onclick = async () => {
-      state.selected =
-        [...state.courses];
-
-      await saveState();
-      applyFilter();
-    };
+    ).oninput =
+      updatePanel;
 
     document.getElementById(
       "pcf-none"
-    ).onclick = async () => {
-      state.selected = [];
+    ).onclick =
+      async () => {
+        state.selected = [];
 
-      await saveState();
-      applyFilter();
-    };
+        await saveState();
+        applyFilter();
+      };
 
-    /*
-     * Select courses that have recordings from
-     * the current calendar year.
-     */
+    document.getElementById(
+      "pcf-all"
+    ).onclick =
+      async () => {
+        state.selected =
+          state.entries.map(
+            entry => entry.key
+          );
+
+        await saveState();
+        applyFilter();
+      };
+
     document.getElementById(
       "pcf-current"
-    ).onclick = async () => {
-      const year =
-        new Date().getFullYear();
+    ).onclick =
+      async () => {
+        const current =
+          getCurrentTerm();
 
-      const current =
-        new Set();
-
-      document.querySelectorAll(
-        "div, span, p, a"
-      ).forEach(element => {
-        const text = normalize(
-          element.innerText ||
-          element.textContent
-        );
-
-        if (
-          text.includes(
-            String(year)
-          ) &&
-          /(Fall|Spring|Summer|Winter)/i.test(
-            text
-          )
-        ) {
-          extractCourseCodes(text)
-            .forEach(course =>
-              current.add(course)
+        state.selected =
+          state.entries
+            .filter(entry =>
+              entry.term ===
+                current.term &&
+              Number(entry.year) ===
+                current.year
+            )
+            .map(entry =>
+              entry.key
             );
-        }
-      });
 
-      state.selected =
-        [...current].filter(course =>
-          state.courses.includes(course)
-        );
+        await saveState();
 
-      await saveState();
-      applyFilter();
-    };
+        applyFilter();
+      };
 
     document.getElementById(
       "pcf-refresh"
-    ).onclick = () => {
-      discoverCourses();
-      applyFilter();
-    };
+    ).onclick =
+      () => {
+        discoverEntries();
+        applyFilter();
+      };
   }
 
   function updatePanel() {
@@ -367,70 +513,123 @@
 
     list.innerHTML = "";
 
-    state.courses
-      .filter(course =>
-        !search ||
-        course.includes(search)
-      )
-      .forEach(course => {
+    /*
+     * Group entries by semester.
+     */
+    const groups =
+      new Map();
+
+    state.entries
+      .filter(entry => {
         const label =
+          entryLabel(entry)
+            .toUpperCase();
+
+        return (
+          !search ||
+          label.includes(search)
+        );
+      })
+      .forEach(entry => {
+        const group =
+          `${entry.term} ${entry.year}`;
+
+        if (!groups.has(group)) {
+          groups.set(
+            group,
+            []
+          );
+        }
+
+        groups
+          .get(group)
+          .push(entry);
+      });
+
+    groups.forEach(
+      (entries, semester) => {
+        const heading =
           document.createElement(
-            "label"
+            "div"
           );
 
-        label.className =
-          "pcf-course";
+        heading.className =
+          "pcf-semester";
 
-        const checkbox =
-          document.createElement(
-            "input"
-          );
+        heading.textContent =
+          semester;
 
-        checkbox.type =
-          "checkbox";
-
-        checkbox.checked =
-          state.selected.includes(
-            course
-          );
-
-        checkbox.onchange =
-          async () => {
-            if (checkbox.checked) {
-              if (
-                !state.selected.includes(
-                  course
-                )
-              ) {
-                state.selected.push(
-                  course
-                );
-              }
-            } else {
-              state.selected =
-                state.selected.filter(
-                  c => c !== course
-                );
-            }
-
-            await saveState();
-            applyFilter();
-          };
-
-        label.append(
-          checkbox,
-          document.createTextNode(
-            course
-          )
+        list.appendChild(
+          heading
         );
 
-        list.appendChild(label);
-      });
+        entries.forEach(entry => {
+          const label =
+            document.createElement(
+              "label"
+            );
+
+          label.className =
+            "pcf-course";
+
+          const checkbox =
+            document.createElement(
+              "input"
+            );
+
+          checkbox.type =
+            "checkbox";
+
+          checkbox.checked =
+            state.selected.includes(
+              entry.key
+            );
+
+          checkbox.onchange =
+            async () => {
+              if (
+                checkbox.checked
+              ) {
+                if (
+                  !state.selected.includes(
+                    entry.key
+                  )
+                ) {
+                  state.selected.push(
+                    entry.key
+                  );
+                }
+              } else {
+                state.selected =
+                  state.selected.filter(
+                    key =>
+                      key !==
+                      entry.key
+                  );
+              }
+
+              await saveState();
+              applyFilter();
+            };
+
+          label.append(
+            checkbox,
+            document.createTextNode(
+              entry.course
+            )
+          );
+
+          list.appendChild(
+            label
+          );
+        });
+      }
+    );
 
     document.getElementById(
       "pcf-count"
     ).textContent =
-      `${state.selected.length} selected · ${state.courses.length} found`;
+      `${state.selected.length} selected · ${state.entries.length} found`;
   }
 
   function createLauncher() {
@@ -453,30 +652,34 @@
     button.textContent =
       "🎓 Courses";
 
-    button.onclick = () => {
-      document
-        .getElementById(
-          "pcf-panel"
-        )
-        .classList.remove(
-          "pcf-hidden"
-        );
-    };
+    button.onclick =
+      () => {
+        document
+          .getElementById(
+            "pcf-panel"
+          )
+          .classList.remove(
+            "pcf-hidden"
+          );
+      };
 
     document.body.appendChild(
       button
     );
   }
 
-  let timer;
+  let scanTimer;
 
   function rescan() {
-    clearTimeout(timer);
+    clearTimeout(
+      scanTimer
+    );
 
-    timer = setTimeout(() => {
-      discoverCourses();
-      applyFilter();
-    }, 700);
+    scanTimer =
+      setTimeout(() => {
+        discoverEntries();
+        applyFilter();
+      }, 700);
   }
 
   async function init() {
@@ -485,7 +688,7 @@
     createPanel();
     createLauncher();
 
-    discoverCourses();
+    discoverEntries();
     applyFilter();
 
     const observer =
