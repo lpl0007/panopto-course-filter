@@ -144,3 +144,81 @@
 #pcf-launcher:hover {
   background: #336a40;
 }
+
+.pcf-current-box {
+  margin: 8px 14px;
+  padding: 9px;
+  background: #f5f8f5;
+  border: 1px solid #d9e2d9;
+  border-radius: 8px;
+}
+
+.pcf-current-title {
+  font-weight: bold;
+  margin-bottom: 7px;
+}
+
+.pcf-current-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.pcf-current-buttons button {
+  border: 1px solid #aaa;
+  background: white;
+  border-radius: 6px;
+  padding: 5px 7px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.pcf-semester-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 8px;
+  background: #f1f3f1;
+  border-top: 1px solid #ddd;
+  border-bottom: 1px solid #ddd;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.pcf-semester-header strong {
+  flex: 1;
+}
+
+.pcf-semester-toggle,
+.pcf-semester-all {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pcf-semester-all {
+  border: 1px solid #bbb;
+  border-radius: 5px;
+  background: white;
+  padding: 3px 6px;
+  font-size: 11px;
+}
+
+.pcf-semester-courses {
+  padding-bottom: 3px;
+}
+
+.pcf-current-class {
+  background: #fffbea;
+}
+
+.pcf-star {
+  color: #d69e00;
+  font-size: 12px;
+}
+
+.pcf-saved-count {
+  color: #777;
+  margin-top: 2px;
+}
