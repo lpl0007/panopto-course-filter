@@ -24,6 +24,10 @@
   display: none;
 }
 
+/* ---------------------------------------------------------
+   HEADER
+   --------------------------------------------------------- */
+
 .pcf-header {
   display: flex;
   justify-content: space-between;
@@ -45,6 +49,10 @@
   font-size: 22px;
   cursor: pointer;
 }
+
+/* ---------------------------------------------------------
+   DESCRIPTION / SEARCH
+   --------------------------------------------------------- */
 
 .pcf-description {
   padding: 10px 14px 5px;
@@ -143,6 +151,10 @@
   background: #f0f0f0;
 }
 
+/* ---------------------------------------------------------
+   CURRENT SEMESTER BUTTON
+   --------------------------------------------------------- */
+
 .pcf-buttons {
   display: flex;
   justify-content: center;
@@ -233,12 +245,6 @@
   border-top: 1px solid #eee;
 
   box-sizing: border-box;
-
-  /*
-   * Keep the scrolling container above the page,
-   * but don't let it affect the rest of the panel.
-   */
-  position: relative;
 }
 
 #pcf-course-list::-webkit-scrollbar {
@@ -312,6 +318,7 @@
   height: 24px;
 
   padding: 0;
+
   margin-right: 5px;
 
   flex-shrink: 0;
@@ -331,7 +338,7 @@
 }
 
 /* ---------------------------------------------------------
-   COURSE ROW
+   COURSE ROWS
    --------------------------------------------------------- */
 
 .pcf-course-row {
@@ -372,14 +379,12 @@
    --------------------------------------------------------- */
 
 .pcf-course-name {
-  position: relative;
-
   display: block;
 
   flex: 1;
   min-width: 0;
 
-  overflow: visible;
+  overflow: hidden;
 }
 
 .pcf-course-display-name {
@@ -392,88 +397,6 @@
   text-overflow: ellipsis;
 
   cursor: help;
-}
-
-/* ---------------------------------------------------------
-   CUSTOM TOOLTIP
-   --------------------------------------------------------- */
-
-.pcf-course-display-name::after {
-  content: attr(data-tooltip);
-
-  position: fixed;
-
-  z-index: 2147483647;
-
-  max-width: 280px;
-
-  padding: 7px 9px;
-
-  background: #222;
-  color: white;
-
-  border-radius: 6px;
-
-  font-size: 12px;
-  font-weight: normal;
-  line-height: 1.35;
-
-  white-space: normal;
-  overflow-wrap: break-word;
-
-  box-shadow: 0 4px 12px rgba(0,0,0,.3);
-
-  opacity: 0;
-  visibility: hidden;
-
-  pointer-events: none;
-
-  /*
-   * Position the tooltip near the top of the
-   * course name without affecting scrolling.
-   */
-  transform: translateY(-4px);
-
-  transition:
-    opacity 0.12s ease,
-    visibility 0.12s ease,
-    transform 0.12s ease;
-}
-
-.pcf-course-display-name:hover::after {
-  opacity: 1;
-  visibility: visible;
-
-  transform: translateY(0);
-}
-
-/*
- * Small arrow.
- */
-
-.pcf-course-display-name::before {
-  content: "";
-
-  position: fixed;
-
-  z-index: 2147483647;
-
-  width: 0;
-  height: 0;
-
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-top: 5px solid #222;
-
-  opacity: 0;
-  visibility: hidden;
-
-  pointer-events: none;
-}
-
-.pcf-course-display-name:hover::before {
-  opacity: 1;
-  visibility: visible;
 }
 
 /* ---------------------------------------------------------
@@ -554,6 +477,42 @@
 
 .pcf-saved-count {
   margin-top: 3px;
+}
+
+/* ---------------------------------------------------------
+   CUSTOM TOOLTIP
+   --------------------------------------------------------- */
+
+#pcf-tooltip {
+  position: fixed;
+
+  z-index: 2147483647;
+
+  max-width: 280px;
+
+  box-sizing: border-box;
+
+  padding: 8px 10px;
+
+  background: #222;
+  color: white;
+
+  border: 1px solid #444;
+  border-radius: 6px;
+
+  font-family: Arial, sans-serif;
+  font-size: 12px;
+  font-weight: normal;
+  line-height: 1.4;
+
+  white-space: normal;
+  overflow-wrap: break-word;
+
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, .35);
+
+  pointer-events: none;
+  user-select: none;
 }
 
 /* ---------------------------------------------------------
