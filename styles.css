@@ -46,6 +46,10 @@
   cursor: pointer;
 }
 
+/* ---------------------------------------------------------
+   DESCRIPTION / SEARCH
+   --------------------------------------------------------- */
+
 .pcf-description {
   padding: 10px 14px 5px;
   color: #666;
@@ -114,6 +118,35 @@
    ALL MAIN BUTTONS
    --------------------------------------------------------- */
 
+.pcf-global-buttons,
+.pcf-semester-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+
+  gap: 6px;
+
+  padding: 3px 14px;
+}
+
+.pcf-global-buttons button,
+.pcf-semester-actions button {
+  border: 1px solid #bbb;
+  background: white;
+
+  border-radius: 6px;
+
+  padding: 6px 9px;
+
+  cursor: pointer;
+}
+
+.pcf-global-buttons button:hover,
+.pcf-semester-actions button:hover {
+  background: #f0f0f0;
+}
+
 .pcf-buttons {
   display: flex;
   justify-content: center;
@@ -143,40 +176,39 @@
 }
 
 /* ---------------------------------------------------------
-   GLOBAL / SEMESTER ACTION BUTTONS
+   VIDEO ACTION BUTTONS
    --------------------------------------------------------- */
 
-.pcf-global-buttons,
-.pcf-semester-actions,
 .pcf-video-actions {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
-  flex-wrap: wrap;
 
   gap: 6px;
 
-  padding: 3px 14px;
+  padding: 6px 14px 9px;
 }
 
-.pcf-global-buttons button,
-.pcf-semester-actions button,
 .pcf-video-actions button {
+  width: 100%;
+
   border: 1px solid #bbb;
   background: white;
 
   border-radius: 6px;
 
-  padding: 5px 8px;
+  padding: 6px 9px;
 
   cursor: pointer;
-  font-size: 12px;
 }
 
-.pcf-global-buttons button:hover,
-.pcf-semester-actions button:hover,
 .pcf-video-actions button:hover {
   background: #f0f0f0;
+}
+
+.pcf-video-actions button:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 /* ---------------------------------------------------------
@@ -239,8 +271,28 @@
   border-bottom: 1px solid #ddd;
 }
 
-.pcf-semester-header strong {
+.pcf-semester-name {
   flex: 1;
+
+  min-width: 0;
+
+  overflow: hidden;
+}
+
+.pcf-semester-name strong {
+  display: inline-block;
+
+  max-width: 100%;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pcf-semester-count {
+  margin-left: 5px;
+  color: #777;
+  font-size: 11px;
 }
 
 .pcf-semester-toggle,
@@ -260,12 +312,16 @@
   padding: 0;
 
   margin-right: 5px;
+
+  flex-shrink: 0;
 }
 
 .pcf-semester-all {
   padding: 4px 7px;
 
   font-size: 11px;
+
+  flex-shrink: 0;
 }
 
 .pcf-semester-toggle:hover,
@@ -274,7 +330,7 @@
 }
 
 /* ---------------------------------------------------------
-   COURSES
+   COURSE ROWS
    --------------------------------------------------------- */
 
 .pcf-course-row {
@@ -282,17 +338,20 @@
   align-items: center;
 
   width: 100%;
+
   box-sizing: border-box;
+
+  padding-right: 8px;
 }
 
 .pcf-course {
   display: flex;
   align-items: center;
 
-  gap: 8px;
-
-  min-width: 0;
   flex: 1;
+  min-width: 0;
+
+  gap: 8px;
 
   padding: 8px 6px 8px 14px;
 
@@ -307,30 +366,41 @@
   background: #fffbea;
 }
 
+/* ---------------------------------------------------------
+   COURSE NAME
+   --------------------------------------------------------- */
+
 .pcf-course-name {
   position: relative;
 
-  min-width: 0;
-  flex: 1;
+  display: block;
 
-  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+
+  overflow: visible;
 }
 
 .pcf-course-display-name {
   display: block;
 
-  overflow: hidden;
+  width: 100%;
+
   white-space: nowrap;
+  overflow: hidden;
   text-overflow: ellipsis;
 
   cursor: help;
 }
 
-/* ---------------------------------------------------------
-   COURSE TOOLTIP
-   --------------------------------------------------------- */
+/*
+ * Custom tooltip.
+ *
+ * The actual tooltip text comes from the
+ * data-tooltip attribute added by content.js.
+ */
 
-.pcf-course-display-name:hover::after {
+.pcf-course-display-name::after {
   content: attr(data-tooltip);
 
   position: absolute;
@@ -341,6 +411,7 @@
   z-index: 2147483647;
 
   max-width: 280px;
+  width: max-content;
 
   padding: 7px 9px;
 
@@ -354,19 +425,21 @@
   line-height: 1.35;
 
   white-space: normal;
-  word-break: break-word;
+  overflow-wrap: break-word;
 
-  box-shadow: 0 3px 12px rgba(0,0,0,.3);
+  box-shadow: 0 4px 12px rgba(0,0,0,.3);
+
+  opacity: 0;
+  visibility: hidden;
 
   pointer-events: none;
 
-  opacity: 1;
+  transition:
+    opacity 0.12s ease,
+    visibility 0.12s ease;
 }
 
-/*
- * Small arrow underneath the tooltip.
- */
-.pcf-course-display-name:hover::before {
+.pcf-course-display-name::before {
   content: "";
 
   position: absolute;
@@ -376,46 +449,86 @@
 
   z-index: 2147483647;
 
+  width: 0;
+  height: 0;
+
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
   border-top: 5px solid #222;
 
+  opacity: 0;
+  visibility: hidden;
+
   pointer-events: none;
+
+  transition:
+    opacity 0.12s ease,
+    visibility 0.12s ease;
 }
+
+.pcf-course-display-name:hover::after,
+.pcf-course-display-name:hover::before {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ---------------------------------------------------------
+   ORIGINAL COURSE NAME
+   --------------------------------------------------------- */
 
 .pcf-course-original-name {
-  margin-left: 5px;
+  display: block;
 
-  color: #888;
+  color: #999;
 
-  font-size: 11px;
+  font-size: 10px;
+
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.pcf-star {
-  color: #d6a500;
-}
+/* ---------------------------------------------------------
+   RENAME BUTTON
+   --------------------------------------------------------- */
 
 .pcf-rename {
   flex-shrink: 0;
 
-  width: 28px;
-  height: 26px;
-
-  margin-right: 8px;
+  width: 27px;
+  height: 27px;
 
   padding: 0;
 
-  border: 1px solid #bbb;
+  border: 1px solid #ccc;
   border-radius: 5px;
 
   background: white;
 
+  color: #555;
+
   cursor: pointer;
+
+  font-size: 14px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .pcf-rename:hover {
-  background: #f0f0f0;
+  background: #eee;
+  color: #222;
+}
+
+/* ---------------------------------------------------------
+   STAR
+   --------------------------------------------------------- */
+
+.pcf-star {
+  flex-shrink: 0;
+
+  color: #d6a500;
 }
 
 /* ---------------------------------------------------------
