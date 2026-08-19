@@ -1,14 +1,15 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "panoptoCourseFilterV12";
+  const STORAGE_KEY = "panoptoCourseFilterV13";
 
   const state = {
     entries: [],
     selected: [],
     currentClasses: [],
     enabled: true,
-    collapsedSemesters: {}
+    collapsedSemesters: {},
+    onlySelectedSemesters: false
   };
 
   let scanTimer = null;
@@ -21,13 +22,26 @@
    * =========================================================
    * COURSE PARSING
    * =========================================================
+   *
+   * Supported:
+   *
+   * Fall 2026-COMP-6710-D01
+   * Spring 2026-COMP-4300-001
+   * Summer 2026-BUAL-2650-002
+   *
+   * And:
+   *
+   * COMP-4300-001 (Spring 2026)
+   *
+   * Winter is intentionally NOT supported.
+   * =========================================================
    */
 
   const FORWARD_RE =
-    /\b(Fall|Spring|Summer|Winter)\s+(\d{4})\s*[-–—]\s*([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\b/gi;
+    /\b(Fall|Spring|Summer)\s+(\d{4})\s*[-–—]\s*([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\b/gi;
 
   const REVERSE_RE =
-    /\b([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\s*\(\s*(Fall|Spring|Summer|Winter)\s+(\d{4})\s*\)/gi;
+    /\b([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\s*\(\s*(Fall|Spring|Summer)\s+(\d{4})\s*\)/gi;
 
   function normalize(text) {
     return (text || "")
@@ -50,12 +64,16 @@
         match[1].slice(1).toLowerCase();
 
       const year = match[2];
-      const subject = match[3].toUpperCase();
+
+      const subject =
+        match[3].toUpperCase();
+
       const number = match[4];
 
-      const section = match[5]
-        ? match[5].toUpperCase()
-        : "";
+      const section =
+        match[5]
+          ? match[5].toUpperCase()
+          : "";
 
       const course =
         `${subject}-${number}${section ? "-" + section : ""}`;
@@ -71,12 +89,15 @@
     REVERSE_RE.lastIndex = 0;
 
     while ((match = REVERSE_RE.exec(text))) {
-      const subject = match[1].toUpperCase();
+      const subject =
+        match[1].toUpperCase();
+
       const number = match[2];
 
-      const section = match[3]
-        ? match[3].toUpperCase()
-        : "";
+      const section =
+        match[3]
+          ? match[3].toUpperCase()
+          : "";
 
       const term =
         match[4].charAt(0).toUpperCase() +
@@ -108,10 +129,9 @@
 
   function sortEntries(entries) {
     const termOrder = {
-      Fall: 4,
-      Summer: 3,
-      Spring: 2,
-      Winter: 1
+      Fall: 3,
+      Summer: 2,
+      Spring: 1
     };
 
     return entries.sort((a, b) => {
@@ -130,7 +150,9 @@
         return termDifference;
       }
 
-      return a.course.localeCompare(b.course);
+      return a.course.localeCompare(
+        b.course
+      );
     });
   }
 
@@ -199,6 +221,11 @@
           ? state.enabled
           : true;
 
+      state.onlySelectedSemesters =
+        typeof state.onlySelectedSemesters === "boolean"
+          ? state.onlySelectedSemesters
+          : false;
+
     } catch (error) {
       if (
         String(error).includes(
@@ -229,10 +256,13 @@
         [STORAGE_KEY]: {
           entries: state.entries,
           selected: state.selected,
-          currentClasses: state.currentClasses,
+          currentClasses:
+            state.currentClasses,
           enabled: state.enabled,
           collapsedSemesters:
-            state.collapsedSemesters
+            state.collapsedSemesters,
+          onlySelectedSemesters:
+            state.onlySelectedSemesters
         }
       });
 
@@ -269,9 +299,6 @@
         "a, span, p, [role='treeitem'], [class*='card'], [class*='Card']"
       )
       .forEach(element => {
-        /*
-         * Never scan our own panel.
-         */
         if (
           element.closest &&
           element.closest("#pcf-panel")
@@ -350,9 +377,6 @@
     document
       .querySelectorAll("a[href]")
       .forEach(link => {
-        /*
-         * Never treat extension UI as a recording.
-         */
         if (
           link.closest &&
           link.closest("#pcf-panel")
@@ -534,11 +558,8 @@
 
       } else {
         /*
-         * IMPORTANT:
-         *
-         * Do not use display:none.
-         * The card remains in the layout so Panopto's
-         * lazy loader can continue loading recordings.
+         * Keep the recording in the layout.
+         * Never use display:none.
          */
         card.classList.add(
           "pcf-filtered-out"
@@ -563,9 +584,6 @@
   /*
    * =========================================================
    * PANEL UPDATE DEBOUNCING
-   *
-   * This prevents the MutationObserver from rebuilding the
-   * panel while a checkbox is being clicked.
    * =========================================================
    */
 
@@ -652,68 +670,87 @@
         "↻ Reloading...";
     }
 
-    /*
-     * Save selections before the actual page reload.
-     */
     await saveState();
 
-    /*
-     * Short delay to ensure storage is committed.
-     */
     await new Promise(resolve =>
       setTimeout(resolve, 250)
     );
 
-    /*
-     * Reload the actual Panopto page.
-     */
     window.location.reload();
   }
 
   /*
    * =========================================================
-   * DYNAMIC PANOPTO CONTENT
-   * =========================================================
-   *
-   * CRITICAL:
-   *
-   * We do NOT call updatePanel() here.
-   *
-   * We only reapply the filter.
-   *
-   * This means Panopto can add recordings without our
-   * extension rebuilding the checkbox panel.
+   * RESET EVERYTHING
    * =========================================================
    */
 
-  function handleDynamicContent() {
-    if (destroyed) {
+  async function resetEverything() {
+    const confirmed =
+      window.confirm(
+        "Reset everything?\n\n" +
+        "This will remove discovered classes, selected classes, " +
+        "saved current classes, and saved preferences."
+      );
+
+    if (!confirmed) {
       return;
     }
 
-    clearTimeout(
-      scanTimer
+    state.entries = [];
+    state.selected = [];
+    state.currentClasses = [];
+    state.collapsedSemesters = {};
+    state.onlySelectedSemesters = false;
+    state.enabled = true;
+
+    try {
+      if (
+        contextValid()
+      ) {
+        await chrome.storage.local.remove(
+          STORAGE_KEY
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Panopto Course Filter: reset failed.",
+        error
+      );
+    }
+
+    /*
+     * Rediscover what is currently present on the page.
+     */
+    discoverEntries({
+      replace: true
+    });
+
+    await saveState();
+
+    showAllCards();
+
+    const enabled =
+      document.getElementById(
+        "pcf-enabled"
+      );
+
+    if (enabled) {
+      enabled.checked = true;
+    }
+
+    const semesterToggle =
+      document.getElementById(
+        "pcf-only-selected-semesters"
+      );
+
+    if (semesterToggle) {
+      semesterToggle.checked = false;
+    }
+
+    updatePanel(
+      findRecordingCards().length
     );
-
-    scanTimer =
-      setTimeout(() => {
-        if (destroyed) {
-          return;
-        }
-
-        /*
-         * Remember newly discovered classes.
-         */
-        discoverEntries();
-
-        void saveState();
-
-        /*
-         * Filter newly added recordings.
-         */
-        applyFilter();
-
-      }, 100);
   }
 
   /*
@@ -746,7 +783,7 @@
       </div>
 
       <div class="pcf-description">
-        Select specific semester/course sections.
+        Select the classes whose recordings you want to see.
       </div>
 
       <input
@@ -754,6 +791,16 @@
         type="search"
         placeholder="Search courses..."
       >
+
+      <div class="pcf-global-buttons">
+        <button id="pcf-select-all">
+          Select All
+        </button>
+
+        <button id="pcf-clear-all">
+          Clear All
+        </button>
+      </div>
 
       <div class="pcf-current-box">
         <div class="pcf-current-title">
@@ -779,10 +826,6 @@
         <button id="pcf-current-semester">
           Current Semester
         </button>
-
-        <button id="pcf-none">
-          None
-        </button>
       </div>
 
       <label class="pcf-toggle">
@@ -793,6 +836,14 @@
         Filter recordings
       </label>
 
+      <label class="pcf-toggle">
+        <input
+          id="pcf-only-selected-semesters"
+          type="checkbox"
+        >
+        Show only semesters with selected classes
+      </label>
+
       <div class="pcf-video-actions">
         <button id="pcf-reload-videos">
           ↻ Reload Videos
@@ -800,6 +851,10 @@
 
         <button id="pcf-rediscover">
           ↻ Forget & Rediscover
+        </button>
+
+        <button id="pcf-reset">
+          Reset Everything
         </button>
       </div>
 
@@ -864,6 +919,28 @@
       };
 
     /*
+     * ONLY SELECTED SEMESTERS
+     */
+
+    const semesterToggle =
+      document.getElementById(
+        "pcf-only-selected-semesters"
+      );
+
+    semesterToggle.checked =
+      state.onlySelectedSemesters;
+
+    semesterToggle.onchange =
+      async event => {
+        state.onlySelectedSemesters =
+          event.target.checked;
+
+        await saveState();
+
+        updatePanel();
+      };
+
+    /*
      * SEARCH
      */
 
@@ -875,20 +952,69 @@
       };
 
     /*
-     * NONE
+     * GLOBAL SELECT ALL
      */
 
     document.getElementById(
-      "pcf-none"
+      "pcf-select-all"
+    ).onclick =
+      async () => {
+        const searchElement =
+          document.getElementById(
+            "pcf-search"
+          );
+
+        const search =
+          normalize(
+            searchElement
+              ? searchElement.value
+              : ""
+          ).toUpperCase();
+
+        const keys =
+          state.entries
+            .filter(entry => {
+              if (!search) {
+                return true;
+              }
+
+              return entryLabel(entry)
+                .toUpperCase()
+                .includes(search);
+            })
+            .map(entry =>
+              entry.key
+            );
+
+        keys.forEach(key => {
+          if (
+            !state.selected.includes(
+              key
+            )
+          ) {
+            state.selected.push(
+              key
+            );
+          }
+        });
+
+        await saveState();
+
+        applyFilter();
+      };
+
+    /*
+     * GLOBAL CLEAR ALL
+     */
+
+    document.getElementById(
+      "pcf-clear-all"
     ).onclick =
       async () => {
         state.selected = [];
 
         await saveState();
 
-        /*
-         * Immediately reveal all loaded recordings.
-         */
         showAllCards();
 
         updatePanel(
@@ -1020,6 +1146,17 @@
       };
 
     /*
+     * RESET EVERYTHING
+     */
+
+    document.getElementById(
+      "pcf-reset"
+    ).onclick =
+      () => {
+        void resetEverything();
+      };
+
+    /*
      * SCAN
      */
 
@@ -1077,16 +1214,11 @@
           : ""
       ).toUpperCase();
 
-    /*
-     * IMPORTANT:
-     *
-     * We only rebuild the course list when explicitly
-     * requested by the UI.
-     *
-     * The MutationObserver never directly calls this.
-     */
-
     list.innerHTML = "";
+
+    /*
+     * Group everything by semester first.
+     */
 
     const groups =
       new Map();
@@ -1120,8 +1252,36 @@
           .push(entry);
       });
 
+    /*
+     * Render semesters.
+     */
+
     groups.forEach(
       (entries, semester) => {
+        const semesterKeys =
+          entries.map(
+            entry =>
+              entry.key
+          );
+
+        const selectedInSemester =
+          entries.filter(entry =>
+            state.selected.includes(
+              entry.key
+            )
+          ).length;
+
+        /*
+         * Hide semesters without selected classes if the
+         * option is enabled.
+         */
+        if (
+          state.onlySelectedSemesters &&
+          selectedInSemester === 0
+        ) {
+          return;
+        }
+
         const header =
           document.createElement(
             "div"
@@ -1141,10 +1301,20 @@
             ${collapsed ? "▶" : "▼"}
           </button>
 
-          <strong>${semester}</strong>
+          <div class="pcf-semester-name">
+            <strong>${semester}</strong>
+            <span class="pcf-semester-count">
+              ${selectedInSemester}/${entries.length}
+            </span>
+          </div>
 
           <button class="pcf-semester-all">
-            All
+            ${
+              selectedInSemester ===
+              entries.length
+                ? "Clear"
+                : "All"
+            }
           </button>
         `;
 
@@ -1189,7 +1359,7 @@
           };
 
         /*
-         * SELECT ALL
+         * SEMESTER ALL/CLEAR
          */
 
         header
@@ -1198,15 +1368,9 @@
           )
           .onclick =
           async () => {
-            const keys =
-              entries.map(
-                entry =>
-                  entry.key
-              );
-
             const allSelected =
-              keys.length > 0 &&
-              keys.every(key =>
+              semesterKeys.length > 0 &&
+              semesterKeys.every(key =>
                 state.selected.includes(
                   key
                 )
@@ -1216,10 +1380,12 @@
               state.selected =
                 state.selected.filter(
                   key =>
-                    !keys.includes(key)
+                    !semesterKeys.includes(
+                      key
+                    )
                 );
             } else {
-              keys.forEach(key => {
+              semesterKeys.forEach(key => {
                 if (
                   !state.selected.includes(
                     key
@@ -1238,7 +1404,7 @@
           };
 
         /*
-         * INDIVIDUAL COURSE
+         * COURSES
          */
 
         entries.forEach(entry => {
@@ -1275,9 +1441,6 @@
 
           checkbox.onchange =
             async () => {
-              /*
-               * Update state FIRST.
-               */
               if (
                 checkbox.checked
               ) {
@@ -1299,15 +1462,11 @@
                   );
               }
 
-              /*
-               * Save selection.
-               */
               await saveState();
 
               /*
-               * Filter the videos.
-               *
-               * DO NOT rebuild the panel here.
+               * Do NOT rebuild the panel here.
+               * This keeps checkbox interaction stable.
                */
               applyFilter();
             };
@@ -1355,7 +1514,7 @@
     );
 
     /*
-     * COUNT
+     * RECORDING COUNT
      */
 
     if (
@@ -1378,6 +1537,10 @@
       }
     }
 
+    /*
+     * STATUS
+     */
+
     const countElement =
       document.getElementById(
         "pcf-count"
@@ -1387,7 +1550,44 @@
       return;
     }
 
+    let statusText = "";
+
+    if (!state.enabled) {
+      statusText =
+        "Filtering disabled";
+    } else if (
+      state.selected.length === 0
+    ) {
+      statusText =
+        "Showing all recordings";
+    } else {
+      const selectedLabels =
+        state.entries
+          .filter(entry =>
+            state.selected.includes(
+              entry.key
+            )
+          )
+          .map(entry =>
+            entry.course
+          );
+
+      if (
+        selectedLabels.length <= 3
+      ) {
+        statusText =
+          `Showing ${selectedLabels.join(", ")}`;
+      } else {
+        statusText =
+          `Showing ${selectedLabels.length} selected classes`;
+      }
+    }
+
     countElement.innerHTML = `
+      <div class="pcf-status">
+        ${statusText}
+      </div>
+
       <div>
         <strong>
           ${state.selected.length}
@@ -1400,7 +1600,8 @@
       </div>
 
       <div class="pcf-discovered-count">
-        ${state.entries.length} discovered
+        ${state.entries.length}
+        discovered classes
       </div>
 
       ${
@@ -1467,6 +1668,43 @@
 
   /*
    * =========================================================
+   * DYNAMIC PANOPTO CONTENT
+   * =========================================================
+   */
+
+  function handleDynamicContent() {
+    if (destroyed) {
+      return;
+    }
+
+    clearTimeout(
+      scanTimer
+    );
+
+    scanTimer =
+      setTimeout(() => {
+        if (destroyed) {
+          return;
+        }
+
+        /*
+         * Discover newly visible classes.
+         */
+        discoverEntries();
+
+        void saveState();
+
+        /*
+         * Apply the existing selection to newly loaded
+         * recordings.
+         */
+        applyFilter();
+
+      }, 100);
+  }
+
+  /*
+   * =========================================================
    * INITIALIZATION
    * =========================================================
    */
@@ -1482,10 +1720,8 @@
     createLauncher();
 
     /*
-     * Install observer BEFORE discovery/filtering.
-     *
-     * Most importantly, the observer completely ignores
-     * anything inside #pcf-panel.
+     * Watch Panopto, but NEVER let mutations inside our
+     * panel trigger a panel rebuild.
      */
     observer =
       new MutationObserver(
@@ -1506,9 +1742,6 @@
               continue;
             }
 
-            /*
-             * Ignore mutations that belong to our panel.
-             */
             const target =
               mutation.target;
 
@@ -1530,10 +1763,6 @@
                 continue;
               }
 
-              /*
-               * Ignore our own UI if it somehow appears
-               * in an added subtree.
-               */
               if (
                 node.id ===
                 "pcf-panel" ||
@@ -1569,19 +1798,19 @@
     );
 
     /*
-     * Initial course discovery.
+     * Initial discovery.
      */
     discoverEntries();
 
     await saveState();
 
     /*
-     * Initial video filtering.
+     * Initial filter.
      */
     applyFilter();
 
     /*
-     * Scroll handling.
+     * Scrolling can cause Panopto to add recordings.
      */
     window.addEventListener(
       "scroll",
@@ -1594,14 +1823,8 @@
     );
 
     /*
-     * =======================================================
-     * POST-LOAD FILTERING
-     *
-     * Panopto may add videos for several seconds after the
-     * page is loaded.
-     * =======================================================
+     * Give Panopto time to populate the page.
      */
-
     let attempts = 0;
 
     const timer =
@@ -1617,9 +1840,6 @@
 
         applyFilter();
 
-        /*
-         * 30 × 500ms = 15 seconds.
-         */
         if (attempts >= 30) {
           clearInterval(timer);
         }
