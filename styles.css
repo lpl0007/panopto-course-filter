@@ -24,10 +24,6 @@
   display: none;
 }
 
-/* ---------------------------------------------------------
-   HEADER
-   --------------------------------------------------------- */
-
 .pcf-header {
   display: flex;
   justify-content: space-between;
@@ -50,10 +46,6 @@
   cursor: pointer;
 }
 
-/* ---------------------------------------------------------
-   DESCRIPTION / SEARCH
-   --------------------------------------------------------- */
-
 .pcf-description {
   padding: 10px 14px 5px;
   color: #666;
@@ -69,68 +61,6 @@
 
   border: 1px solid #bbb;
   border-radius: 7px;
-}
-
-/* ---------------------------------------------------------
-   GLOBAL BUTTONS
-   --------------------------------------------------------- */
-
-.pcf-global-buttons {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  flex-wrap: wrap;
-
-  gap: 6px;
-
-  padding: 3px 14px 6px;
-}
-
-.pcf-global-buttons button {
-  border: 1px solid #bbb;
-  background: white;
-
-  border-radius: 6px;
-
-  padding: 6px 9px;
-
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.pcf-global-buttons button:hover {
-  background: #f0f0f0;
-}
-
-/* ---------------------------------------------------------
-   EXPAND / COLLAPSE ALL
-   --------------------------------------------------------- */
-
-.pcf-semester-actions {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  flex-wrap: wrap;
-
-  gap: 6px;
-
-  padding: 3px 14px 6px;
-}
-
-.pcf-semester-actions button {
-  border: 1px solid #bbb;
-  background: white;
-
-  border-radius: 6px;
-
-  padding: 6px 9px;
-
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.pcf-semester-actions button:hover {
-  background: #f0f0f0;
 }
 
 /* ---------------------------------------------------------
@@ -153,7 +83,7 @@
   margin-bottom: 7px;
 
   font-weight: bold;
-  text-align: center;
+  text-align: left;
 }
 
 .pcf-current-buttons {
@@ -168,7 +98,6 @@
 .pcf-current-buttons button {
   border: 1px solid #bbb;
   background: white;
-
   border-radius: 6px;
 
   padding: 5px 8px;
@@ -182,7 +111,7 @@
 }
 
 /* ---------------------------------------------------------
-   CURRENT SEMESTER
+   ALL MAIN BUTTONS
    --------------------------------------------------------- */
 
 .pcf-buttons {
@@ -196,7 +125,8 @@
   padding: 3px 14px 8px;
 }
 
-.pcf-buttons button {
+.pcf-buttons button,
+#pcf-refresh {
   border: 1px solid #bbb;
   background: white;
 
@@ -207,30 +137,17 @@
   cursor: pointer;
 }
 
-.pcf-buttons button:hover {
+.pcf-buttons button:hover,
+#pcf-refresh:hover {
   background: #f0f0f0;
 }
 
 /* ---------------------------------------------------------
-   TOGGLES
+   GLOBAL / SEMESTER ACTION BUTTONS
    --------------------------------------------------------- */
 
-.pcf-toggle {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-
-  gap: 5px;
-
-  padding: 5px 14px;
-
-  text-align: center;
-}
-
-/* ---------------------------------------------------------
-   VIDEO / RESET BUTTONS
-   --------------------------------------------------------- */
-
+.pcf-global-buttons,
+.pcf-semester-actions,
 .pcf-video-actions {
   display: flex;
   justify-content: center;
@@ -239,23 +156,39 @@
 
   gap: 6px;
 
-  padding: 4px 14px 8px;
+  padding: 3px 14px;
 }
 
+.pcf-global-buttons button,
+.pcf-semester-actions button,
 .pcf-video-actions button {
   border: 1px solid #bbb;
   background: white;
 
   border-radius: 6px;
 
-  padding: 6px 9px;
+  padding: 5px 8px;
 
   cursor: pointer;
   font-size: 12px;
 }
 
+.pcf-global-buttons button:hover,
+.pcf-semester-actions button:hover,
 .pcf-video-actions button:hover {
   background: #f0f0f0;
+}
+
+/* ---------------------------------------------------------
+   TOGGLE
+   --------------------------------------------------------- */
+
+.pcf-toggle {
+  display: block;
+
+  padding: 5px 14px;
+
+  text-align: center;
 }
 
 /* ---------------------------------------------------------
@@ -306,27 +239,12 @@
   border-bottom: 1px solid #ddd;
 }
 
-.pcf-semester-name {
-  flex: 1;
-
-  text-align: center;
-}
-
 .pcf-semester-header strong {
-  display: inline;
-}
-
-.pcf-semester-count {
-  margin-left: 4px;
-
-  color: #777;
-  font-size: 12px;
+  flex: 1;
 }
 
 .pcf-semester-toggle,
 .pcf-semester-all {
-  flex: 0 0 auto;
-
   border: 1px solid #bbb;
   background: white;
 
@@ -365,28 +283,24 @@
 
   width: 100%;
   box-sizing: border-box;
-
-  padding: 0;
-
-  border-bottom: 1px solid #eee;
-}
-
-.pcf-course-row:hover {
-  background: #f3f3f3;
 }
 
 .pcf-course {
   display: flex;
   align-items: center;
 
-  flex: 1;
-  min-width: 0;
-
   gap: 8px;
 
-  padding: 8px 14px;
+  min-width: 0;
+  flex: 1;
+
+  padding: 8px 6px 8px 14px;
 
   cursor: pointer;
+}
+
+.pcf-course:hover {
+  background: #f3f3f3;
 }
 
 .pcf-course.pcf-current-class {
@@ -394,25 +308,87 @@
 }
 
 .pcf-course-name {
-  min-width: 0;
+  position: relative;
 
-  display: flex;
-  align-items: center;
-  gap: 5px;
+  min-width: 0;
+  flex: 1;
 
   overflow: hidden;
 }
 
 .pcf-course-display-name {
+  display: block;
+
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  text-overflow: ellipsis;
+
+  cursor: help;
+}
+
+/* ---------------------------------------------------------
+   COURSE TOOLTIP
+   --------------------------------------------------------- */
+
+.pcf-course-display-name:hover::after {
+  content: attr(data-tooltip);
+
+  position: absolute;
+
+  left: 0;
+  bottom: calc(100% + 7px);
+
+  z-index: 2147483647;
+
+  max-width: 280px;
+
+  padding: 7px 9px;
+
+  background: #222;
+  color: white;
+
+  border-radius: 6px;
+
+  font-size: 12px;
+  font-weight: normal;
+  line-height: 1.35;
+
+  white-space: normal;
+  word-break: break-word;
+
+  box-shadow: 0 3px 12px rgba(0,0,0,.3);
+
+  pointer-events: none;
+
+  opacity: 1;
+}
+
+/*
+ * Small arrow underneath the tooltip.
+ */
+.pcf-course-display-name:hover::before {
+  content: "";
+
+  position: absolute;
+
+  left: 12px;
+  bottom: calc(100% + 2px);
+
+  z-index: 2147483647;
+
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid #222;
+
+  pointer-events: none;
 }
 
 .pcf-course-original-name {
-  color: #888;
-  font-size: 11px;
+  margin-left: 5px;
 
+  color: #888;
+
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -420,31 +396,22 @@
   color: #d6a500;
 }
 
-/* ---------------------------------------------------------
-   RENAME BUTTON
-   --------------------------------------------------------- */
-
 .pcf-rename {
-  flex: 0 0 auto;
+  flex-shrink: 0;
 
-  width: 34px;
-  height: 30px;
+  width: 28px;
+  height: 26px;
 
-  margin: 0 8px 0 4px;
+  margin-right: 8px;
+
   padding: 0;
 
-  display: flex;
-  justify-content: center;
-  align-items: center;
-
   border: 1px solid #bbb;
-  background: white;
-
   border-radius: 5px;
 
-  cursor: pointer;
+  background: white;
 
-  font-size: 14px;
+  cursor: pointer;
 }
 
 .pcf-rename:hover {
@@ -466,21 +433,6 @@
 
   color: #666;
   font-size: 12px;
-}
-
-#pcf-refresh {
-  border: 1px solid #bbb;
-  background: white;
-
-  border-radius: 6px;
-
-  padding: 6px 9px;
-
-  cursor: pointer;
-}
-
-#pcf-refresh:hover {
-  background: #f0f0f0;
 }
 
 .pcf-saved-count {
