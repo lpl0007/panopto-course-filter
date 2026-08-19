@@ -10,12 +10,82 @@
     collapsedSemesters: {},
     enabled: true,
     loading: false,
-    lastUrl: location.href
+    lastUrl: location.href,
+    generation: 0
   };
 
   // ============================================================
+  // EXTENSION SAFETY
+  // ============================================================
+
+  function extensionAlive() {
+    try {
+      return !!(
+        chrome &&
+        chrome.runtime &&
+        chrome.runtime.id &&
+        chrome.storage &&
+        chrome.storage.local
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  async function safeStorageGet(key) {
+    if (!extensionAlive()) {
+      return null;
+    }
+
+    try {
+      return await chrome.storage.local.get(key);
+    } catch (error) {
+      if (
+        String(error?.message || error)
+          .toLowerCase()
+          .includes("context invalidated")
+      ) {
+        return null;
+      }
+
+      console.warn(
+        "Panopto Course Filter: storage read failed",
+        error
+      );
+
+      return null;
+    }
+  }
+
+  async function safeStorageSet(data) {
+    if (!extensionAlive()) {
+      return false;
+    }
+
+    try {
+      await chrome.storage.local.set(data);
+      return true;
+    } catch (error) {
+      if (
+        String(error?.message || error)
+          .toLowerCase()
+          .includes("context invalidated")
+      ) {
+        return false;
+      }
+
+      console.warn(
+        "Panopto Course Filter: storage write failed",
+        error
+      );
+
+      return false;
+    }
+  }
+
+  // ============================================================
   // COURSE PARSING
-  // Auburn uses Fall / Spring / Summer only.
+  // Auburn: Fall / Spring / Summer only.
   // ============================================================
 
   const COURSE_PATTERNS = [
@@ -53,13 +123,7 @@
         let number;
         let section;
 
-        /*
-         * Pattern 1:
-         * Fall 2025 - COMP - 4300
-         */
-        if (
-          /Fall|Spring|Summer/i.test(m[1])
-        ) {
+        if (/Fall|Spring|Summer/i.test(m[1])) {
           term =
             m[1][0].toUpperCase() +
             m[1].slice(1).toLowerCase();
@@ -68,14 +132,7 @@
           subject = m[3].toUpperCase();
           number = m[4];
           section = m[5] || "";
-        }
-
-        /*
-         * Pattern 2/3:
-         * COMP-4300 - Fall 2025
-         * COMP 4300 (Fall 2025)
-         */
-        else {
+        } else {
           subject = m[1].toUpperCase();
           number = m[2];
           section = m[3] || "";
@@ -97,10 +154,7 @@
           course
         };
 
-        found.set(
-          entry.key,
-          entry
-        );
+        found.set(entry.key, entry);
       }
     }
 
@@ -116,8 +170,7 @@
 
     return [...entries].sort((a, b) => {
       const yearDiff =
-        Number(b.year) -
-        Number(a.year);
+        Number(b.year) - Number(a.year);
 
       if (yearDiff) {
         return yearDiff;
@@ -131,9 +184,7 @@
         return termDiff;
       }
 
-      return a.course.localeCompare(
-        b.course
-      );
+      return a.course.localeCompare(b.course);
     });
   }
 
@@ -147,11 +198,9 @@
 
   async function loadState() {
     const result =
-      await chrome.storage.local.get(
-        STORAGE_KEY
-      );
+      await safeStorageGet(STORAGE_KEY);
 
-    if (result[STORAGE_KEY]) {
+    if (result?.[STORAGE_KEY]) {
       Object.assign(
         state,
         result[STORAGE_KEY]
@@ -169,16 +218,13 @@
         : [];
 
     state.currentClasses =
-      Array.isArray(
-        state.currentClasses
-      )
+      Array.isArray(state.currentClasses)
         ? state.currentClasses
         : [];
 
     state.collapsedSemesters =
       state.collapsedSemesters || {};
 
-    // Remove obsolete Winter entries from older versions.
     state.entries =
       state.entries.filter(entry =>
         ["Fall", "Spring", "Summer"]
@@ -187,12 +233,11 @@
   }
 
   async function saveState() {
-    await chrome.storage.local.set({
+    return safeStorageSet({
       [STORAGE_KEY]: {
         entries: state.entries,
         selected: state.selected,
-        currentClasses:
-          state.currentClasses,
+        currentClasses: state.currentClasses,
         collapsedSemesters:
           state.collapsedSemesters,
         enabled: state.enabled
@@ -207,9 +252,6 @@
   async function discoverCourses() {
     const discovered = new Map();
 
-    /*
-     * Scan visible page text.
-     */
     const bodyText =
       normalize(
         document.body?.innerText || ""
@@ -223,12 +265,6 @@
         );
       });
 
-    /*
-     * Scan reasonably sized elements too.
-     *
-     * This catches course labels that aren't represented
-     * in body.innerText in the same way.
-     */
     document
       .querySelectorAll(
         "a,span,p,div,li,td,button"
@@ -274,9 +310,6 @@
         [...merged.values()]
       );
 
-    /*
-     * Keep selected/current references valid.
-     */
     const valid =
       new Set(
         state.entries.map(
@@ -298,7 +331,7 @@
   }
 
   // ============================================================
-  // CLEAR COURSE DATABASE
+  // CLEAR
   // ============================================================
 
   async function clearAllCourses() {
@@ -309,9 +342,6 @@
 
     await saveState();
 
-    /*
-     * Rebuild from the current page.
-     */
     await discoverCourses();
 
     restoreAll();
@@ -326,7 +356,7 @@
   }
 
   // ============================================================
-  // PANOPTO RECORDING LINKS
+  // RECORDING LINKS
   // ============================================================
 
   function getViewerLinks() {
@@ -337,9 +367,6 @@
     ];
   }
 
-  /*
-   * Return a stable identifier for a recording.
-   */
   function getViewerId(link) {
     try {
       const url =
@@ -358,18 +385,12 @@
   }
 
   // ============================================================
-  // FIND RECORDING CONTAINER
-  //
-  // CRITICAL:
-  // We NEVER use giant page-level ancestors.
+  // RECORDING CONTAINER
   // ============================================================
 
   function getRecordingContainer(link) {
     let current = link;
 
-    /*
-     * Look for the smallest useful ancestor.
-     */
     for (
       let depth = 0;
       depth < 8 && current;
@@ -384,9 +405,6 @@
           current.textContent
         );
 
-      /*
-       * Reject the entire page / giant containers.
-       */
       if (
         rect.width >
           window.innerWidth * 0.95 &&
@@ -399,9 +417,6 @@
         continue;
       }
 
-      /*
-       * Don't use tiny inline elements.
-       */
       if (
         rect.width < 150 ||
         rect.height < 40
@@ -412,17 +427,13 @@
         continue;
       }
 
-      /*
-       * A recording container shouldn't contain
-       * dozens/hundreds of Viewer links.
-       */
       const viewerCount =
         current.querySelectorAll(
           'a[href*="/Panopto/Pages/Viewer.aspx?id="]'
         ).length;
 
       if (
-        viewerCount > 6
+        viewerCount > 2
       ) {
         current =
           current.parentElement;
@@ -430,9 +441,6 @@
         continue;
       }
 
-      /*
-       * Prefer containers with reasonable text.
-       */
       if (
         text.length >= 1 &&
         text.length < 1500
@@ -444,19 +452,11 @@
         current.parentElement;
     }
 
-    /*
-     * Absolute fallback:
-     * the direct parent of the viewer link.
-     */
     return (
       link.parentElement ||
       link
     );
   }
-
-  // ============================================================
-  // RECORDING OBJECTS
-  // ============================================================
 
   function getRecordings() {
     const links =
@@ -494,14 +494,9 @@
 
   // ============================================================
   // COURSE CONTEXT
-  //
-  // Search from the recording upward, but don't go to
-  // page-level containers.
   // ============================================================
 
-  function getRecordingCourses(
-    recording
-  ) {
+  function getRecordingCourses(recording) {
     const found = new Map();
 
     let current =
@@ -515,9 +510,6 @@
       const rect =
         current.getBoundingClientRect();
 
-      /*
-       * Stop before reaching the entire recording list.
-       */
       if (
         rect.width >
           window.innerWidth * 0.95 &&
@@ -558,10 +550,6 @@
   // ============================================================
 
   function restoreAll() {
-    /*
-     * Only restore actual recording containers we previously
-     * modified.
-     */
     document
       .querySelectorAll(
         ".pcf-recording-hidden"
@@ -590,23 +578,13 @@
   // ============================================================
 
   function applyFilter() {
-    /*
-     * ALWAYS restore our own changes first.
-     *
-     * This fixes the problem where unselecting a course
-     * previously didn't bring recordings back.
-     */
     restoreAll();
 
-    /*
-     * Nothing selected means EVERYTHING.
-     */
     if (
       !state.enabled ||
       state.selected.length === 0
     ) {
       updatePanel();
-
       return;
     }
 
@@ -618,8 +596,6 @@
     const recordings =
       getRecordings();
 
-    let hidden = 0;
-
     for (
       const recording of recordings
     ) {
@@ -629,12 +605,10 @@
         );
 
       /*
-       * UNKNOWN COURSE:
+       * Unknown course = leave visible.
        *
-       * Do NOT hide it.
-       *
-       * This is much safer than blanking the entire
-       * Shared with Me page.
+       * Never hide the page just because we
+       * couldn't associate a recording.
        */
       if (
         courses.length === 0
@@ -654,10 +628,6 @@
         const container =
           recording.container;
 
-        /*
-         * Only hide a container that we know represents
-         * a single recording.
-         */
         const viewerCount =
           container.querySelectorAll(
             'a[href*="/Panopto/Pages/Viewer.aspx?id="]'
@@ -672,15 +642,11 @@
 
           container.style.display =
             "none";
-
-          hidden++;
         }
       }
     }
 
     updatePanel();
-
-    return hidden;
   }
 
   // ============================================================
@@ -718,6 +684,12 @@
       return;
     }
 
+    /*
+     * A new generation lets us abandon old work safely.
+     */
+    const generation =
+      ++state.generation;
+
     if (
       state.selected.length === 0
     ) {
@@ -735,9 +707,6 @@
 
     updateLoadButton();
 
-    /*
-     * Don't filter while Panopto is adding DOM elements.
-     */
     restoreAll();
 
     let previous = 0;
@@ -749,9 +718,13 @@
         round < 50;
         round++
       ) {
-        /*
-         * Scroll the actual document.
-         */
+        if (
+          generation !==
+          state.generation
+        ) {
+          return;
+        }
+
         window.scrollTo({
           top:
             document.documentElement
@@ -759,9 +732,6 @@
           behavior: "instant"
         });
 
-        /*
-         * Also scroll internal Panopto containers.
-         */
         getScrollContainers()
           .forEach(el => {
             try {
@@ -777,6 +747,13 @@
               900
             )
         );
+
+        if (
+          generation !==
+          state.generation
+        ) {
+          return;
+        }
 
         const count =
           getRecordings().length;
@@ -794,10 +771,6 @@
           `Loading recordings… ${count} found`
         );
 
-        /*
-         * Seven rounds without new recordings means
-         * Panopto has probably finished.
-         */
         if (
           unchanged >= 7
         ) {
@@ -805,21 +778,30 @@
         }
       }
 
+      if (
+        generation !==
+        state.generation
+      ) {
+        return;
+      }
+
       await discoverCourses();
 
     } finally {
-      state.loading = false;
+      if (
+        generation ===
+        state.generation
+      ) {
+        state.loading = false;
 
-      /*
-       * NOW filter.
-       */
-      applyFilter();
+        applyFilter();
 
-      updateLoadButton();
+        updateLoadButton();
 
-      showStatus(
-        `Finished. ${getRecordings().length} recordings found.`
-      );
+        showStatus(
+          `Finished. ${getRecordings().length} recordings found.`
+        );
+      }
     }
   }
 
@@ -835,10 +817,7 @@
       button.textContent =
         "⏳ Loading recordings…";
 
-      button.onclick =
-        () => {
-          state.loading = false;
-        };
+      button.onclick = null;
     } else {
       button.textContent =
         "🔎 Load Matching Recordings";
@@ -1031,6 +1010,8 @@
       "pcf-none"
     ).onclick =
       async () => {
+        state.generation++;
+
         state.selected = [];
 
         await saveState();
@@ -1107,8 +1088,7 @@
       "pcf-clear-current"
     ).onclick =
       async () => {
-        state.currentClasses =
-          [];
+        state.currentClasses = [];
 
         await saveState();
 
@@ -1145,6 +1125,8 @@
         ) {
           return;
         }
+
+        state.generation++;
 
         await clearAllCourses();
       };
@@ -1343,6 +1325,8 @@
 
         checkbox.onchange =
           async () => {
+            state.generation++;
+
             if (
               checkbox.checked
             ) {
@@ -1478,7 +1462,9 @@
 
     statusTimer =
       setTimeout(() => {
-        el.textContent = "";
+        if (el) {
+          el.textContent = "";
+        }
       }, 5000);
   }
 
@@ -1508,13 +1494,18 @@
 
     button.onclick =
       () => {
-        document
-          .getElementById(
+        const panel =
+          document.getElementById(
             "pcf-panel"
-          )
-          .classList.remove(
-            "pcf-hidden"
           );
+
+        if (!panel) {
+          return;
+        }
+
+        panel.classList.remove(
+          "pcf-hidden"
+        );
 
         updatePanel();
       };
@@ -1538,21 +1529,45 @@
     scanTimer =
       setTimeout(
         async () => {
-          /*
-           * Don't interfere while we're deliberately
-           * loading more recordings.
-           */
           if (
             state.loading
           ) {
             return;
           }
 
-          await discoverCourses();
+          /*
+           * If Chrome has invalidated this content script,
+           * stop rather than producing repeated errors.
+           */
+          if (
+            !extensionAlive()
+          ) {
+            return;
+          }
 
-          applyFilter();
+          try {
+            await discoverCourses();
+
+            applyFilter();
+          } catch (error) {
+            if (
+              !String(
+                error?.message ||
+                error
+              )
+                .toLowerCase()
+                .includes(
+                  "context invalidated"
+                )
+            ) {
+              console.warn(
+                "Panopto Course Filter scan failed",
+                error
+              );
+            }
+          }
         },
-        500
+        700
       );
   }
 
@@ -1585,23 +1600,41 @@
           state.lastUrl =
             location.href;
 
-          /*
-           * Panopto changes the hash when switching between:
-           * Home
-           * Shared with Me
-           * Everything
-           *
-           * Give React time to rebuild the list.
-           */
+          state.generation++;
+
           setTimeout(
             async () => {
-              await discoverCourses();
+              if (
+                !extensionAlive()
+              ) {
+                return;
+              }
 
-              restoreAll();
+              try {
+                await discoverCourses();
 
-              applyFilter();
+                restoreAll();
 
-              updatePanel();
+                applyFilter();
+
+                updatePanel();
+              } catch (error) {
+                if (
+                  !String(
+                    error?.message ||
+                    error
+                  )
+                    .toLowerCase()
+                    .includes(
+                      "context invalidated"
+                    )
+                ) {
+                  console.warn(
+                    "Panopto navigation scan failed",
+                    error
+                  );
+                }
+              }
             },
             800
           );
@@ -1626,37 +1659,75 @@
   // ============================================================
 
   async function init() {
-    await loadState();
-
-    createPanel();
-    createLauncher();
-
-    await discoverCourses();
-
-    restoreAll();
-
-    applyFilter();
-
-    installObserver();
-    watchUrl();
-
     /*
-     * Panopto loads its recording list asynchronously.
+     * If this particular content-script instance was already
+     * invalidated, simply don't start it.
      */
-    setTimeout(
-      scheduleScan,
-      1000
-    );
+    if (
+      !extensionAlive()
+    ) {
+      return;
+    }
 
-    setTimeout(
-      scheduleScan,
-      2500
-    );
+    try {
+      await loadState();
 
-    setTimeout(
-      scheduleScan,
-      5000
-    );
+      if (
+        !extensionAlive()
+      ) {
+        return;
+      }
+
+      createPanel();
+      createLauncher();
+
+      await discoverCourses();
+
+      if (
+        !extensionAlive()
+      ) {
+        return;
+      }
+
+      restoreAll();
+
+      applyFilter();
+
+      installObserver();
+      watchUrl();
+
+      setTimeout(
+        scheduleScan,
+        1000
+      );
+
+      setTimeout(
+        scheduleScan,
+        2500
+      );
+
+      setTimeout(
+        scheduleScan,
+        5000
+      );
+
+    } catch (error) {
+      if (
+        !String(
+          error?.message ||
+          error
+        )
+          .toLowerCase()
+          .includes(
+            "context invalidated"
+          )
+      ) {
+        console.error(
+          "Panopto Course Filter initialization failed:",
+          error
+        );
+      }
+    }
   }
 
   init();
