@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "panoptoCourseFilterV8";
+  const STORAGE_KEY = "panoptoCourseFilterV9";
 
   const state = {
     entries: [],
@@ -13,16 +13,16 @@
 
   let scanTimer = null;
   let loadingMore = false;
-  let observer = null;
+  let destroyed = false;
 
   /*
    * =========================================================
-   * COURSE PARSING
+   * COURSE / SEMESTER PARSING
    * =========================================================
    */
 
   const FORWARD_RE =
-    /\b(Fall|Spring|Summer|Winter)\s+(\d{4})\s*[-–—]?\s*([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\b/gi;
+    /\b(Fall|Spring|Summer|Winter)\s+(\d{4})\s*[-–—]\s*([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\b/gi;
 
   const REVERSE_RE =
     /\b([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\s*\(\s*(Fall|Spring|Summer|Winter)\s+(\d{4})\s*\)/gi;
@@ -137,57 +137,137 @@
    * =========================================================
    */
 
-  async function loadState() {
-    const result =
-      await chrome.storage.local.get(STORAGE_KEY);
-
-    if (result[STORAGE_KEY]) {
-      Object.assign(
-        state,
-        result[STORAGE_KEY]
+  function extensionContextIsValid() {
+    try {
+      return Boolean(
+        chrome &&
+        chrome.runtime &&
+        chrome.runtime.id
       );
+    } catch (error) {
+      return false;
     }
+  }
 
-    state.entries =
-      Array.isArray(state.entries)
-        ? state.entries
-        : [];
+  async function loadState() {
+    try {
+      if (!extensionContextIsValid()) {
+        return false;
+      }
 
-    state.selected =
-      Array.isArray(state.selected)
-        ? state.selected
-        : [];
+      const result =
+        await chrome.storage.local.get(
+          STORAGE_KEY
+        );
 
-    state.currentClasses =
-      Array.isArray(state.currentClasses)
-        ? state.currentClasses
-        : [];
+      if (
+        !extensionContextIsValid()
+      ) {
+        return false;
+      }
 
-    state.collapsedSemesters =
-      state.collapsedSemesters || {};
+      if (result[STORAGE_KEY]) {
+        Object.assign(
+          state,
+          result[STORAGE_KEY]
+        );
+      }
 
-    state.enabled =
-      typeof state.enabled === "boolean"
-        ? state.enabled
-        : true;
+      state.entries =
+        Array.isArray(state.entries)
+          ? state.entries
+          : [];
+
+      state.selected =
+        Array.isArray(state.selected)
+          ? state.selected
+          : [];
+
+      state.currentClasses =
+        Array.isArray(state.currentClasses)
+          ? state.currentClasses
+          : [];
+
+      state.collapsedSemesters =
+        state.collapsedSemesters || {};
+
+      state.enabled =
+        typeof state.enabled === "boolean"
+          ? state.enabled
+          : true;
+
+      return true;
+    } catch (error) {
+      if (
+        String(error).includes(
+          "Extension context invalidated"
+        )
+      ) {
+        console.warn(
+          "Panopto Course Filter: extension was reloaded. Refresh the Panopto page."
+        );
+
+        destroyed = true;
+        return false;
+      }
+
+      console.error(
+        "Panopto Course Filter: could not load state.",
+        error
+      );
+
+      return false;
+    }
   }
 
   async function saveState() {
-    await chrome.storage.local.set({
-      [STORAGE_KEY]: {
-        entries: state.entries,
-        selected: state.selected,
-        currentClasses: state.currentClasses,
-        enabled: state.enabled,
-        collapsedSemesters:
-          state.collapsedSemesters
+    try {
+      if (
+        destroyed ||
+        !extensionContextIsValid()
+      ) {
+        return false;
       }
-    });
+
+      await chrome.storage.local.set({
+        [STORAGE_KEY]: {
+          entries: state.entries,
+          selected: state.selected,
+          currentClasses:
+            state.currentClasses,
+          enabled: state.enabled,
+          collapsedSemesters:
+            state.collapsedSemesters
+        }
+      });
+
+      return true;
+    } catch (error) {
+      if (
+        String(error).includes(
+          "Extension context invalidated"
+        )
+      ) {
+        console.warn(
+          "Panopto Course Filter: extension was reloaded. Refresh the Panopto page."
+        );
+
+        destroyed = true;
+        return false;
+      }
+
+      console.error(
+        "Panopto Course Filter: could not save state.",
+        error
+      );
+
+      return false;
+    }
   }
 
   /*
    * =========================================================
-   * DISCOVERY
+   * COURSE DISCOVERY
    * =========================================================
    */
 
@@ -231,7 +311,10 @@
       const merged = new Map();
 
       state.entries.forEach(entry => {
-        if (entry && entry.key) {
+        if (
+          entry &&
+          entry.key
+        ) {
           merged.set(
             entry.key,
             entry
@@ -240,7 +323,10 @@
       });
 
       found.forEach((entry, key) => {
-        merged.set(key, entry);
+        merged.set(
+          key,
+          entry
+        );
       });
 
       state.entries =
@@ -249,14 +335,8 @@
         );
     }
 
-    /*
-     * Do NOT delete saved selections merely because a class
-     * isn't currently rendered. Remembered classes are exactly
-     * what we want to preserve across Panopto loads.
-     */
-
     if (save) {
-      saveState();
+      void saveState();
     }
 
     return found.size;
@@ -264,7 +344,7 @@
 
   /*
    * =========================================================
-   * RECORDING CARDS
+   * RECORDING CARD DETECTION
    * =========================================================
    */
 
@@ -275,9 +355,14 @@
       .querySelectorAll("a[href]")
       .forEach(link => {
         const href =
-          link.getAttribute("href") || "";
+          link.getAttribute("href") ||
+          "";
 
-        if (!/viewer|session/i.test(href)) {
+        if (
+          !/viewer|session/i.test(
+            href
+          )
+        ) {
           return;
         }
 
@@ -308,7 +393,9 @@
                 "a[href]"
               );
 
-            if (links.length <= 5) {
+            if (
+              links.length <= 5
+            ) {
               cards.add(parent);
               break;
             }
@@ -348,7 +435,13 @@
 
   /*
    * =========================================================
-   * FILTER
+   * FILTERING
+   *
+   * We use visibility/opacity instead of display:none.
+   *
+   * The cards remain in the DOM and retain their layout
+   * dimensions so Panopto's lazy-loading system can continue
+   * working.
    * =========================================================
    */
 
@@ -359,10 +452,6 @@
           "pcf-filtered-out"
         );
 
-        /*
-         * Also clean up any styles from older versions
-         * of the extension.
-         */
         card.style.removeProperty(
           "display"
         );
@@ -382,10 +471,14 @@
   }
 
   function applyFilter() {
+    if (destroyed) {
+      return;
+    }
+
     const cards =
       findRecordingCards();
 
-    let matching = 0;
+    let matchingCount = 0;
 
     cards.forEach(card => {
       if (
@@ -396,7 +489,19 @@
           "pcf-filtered-out"
         );
 
-        matching++;
+        card.style.removeProperty(
+          "visibility"
+        );
+
+        card.style.removeProperty(
+          "opacity"
+        );
+
+        card.style.removeProperty(
+          "pointer-events"
+        );
+
+        matchingCount++;
         return;
       }
 
@@ -407,554 +512,38 @@
           "pcf-filtered-out"
         );
 
-        matching++;
+        card.style.removeProperty(
+          "visibility"
+        );
+
+        card.style.removeProperty(
+          "opacity"
+        );
+
+        card.style.removeProperty(
+          "pointer-events"
+        );
+
+        matchingCount++;
       } else {
         card.classList.add(
           "pcf-filtered-out"
         );
+
+        card.style.visibility =
+          "hidden";
+
+        card.style.opacity =
+          "0";
+
+        card.style.pointerEvents =
+          "none";
       }
     });
 
-    updatePanel(matching);
-  }
-
-  /*
-   * =========================================================
-   * FIND PANOPTO'S REAL SCROLL CONTAINER
-   * =========================================================
-   */
-
-  function getScrollContainers() {
-    const result = [];
-    const seen = new Set();
-
-    function add(element) {
-      if (!element) {
-        return;
-      }
-
-      if (seen.has(element)) {
-        return;
-      }
-
-      seen.add(element);
-      result.push(element);
-    }
-
-    /*
-     * First inspect ancestors of recording cards.
-     */
-    const cards =
-      findRecordingCards();
-
-    cards.slice(0, 50)
-      .forEach(card => {
-        let el =
-          card.parentElement;
-
-        while (
-          el &&
-          el !== document.body &&
-          el !== document.documentElement
-        ) {
-          const style =
-            getComputedStyle(el);
-
-          const overflow =
-            style.overflowY;
-
-          const scrollable =
-            (
-              overflow === "auto" ||
-              overflow === "scroll" ||
-              overflow === "overlay"
-            ) &&
-            el.scrollHeight >
-              el.clientHeight + 30;
-
-          if (scrollable) {
-            add(el);
-          }
-
-          el =
-            el.parentElement;
-        }
-      });
-
-    /*
-     * Then inspect the whole document for scrollable elements.
-     *
-     * Panopto sometimes changes which element owns the
-     * scrolling after navigating between pages.
-     */
-    document
-      .querySelectorAll("*")
-      .forEach(el => {
-        if (
-          result.length >= 8
-        ) {
-          return;
-        }
-
-        const style =
-          getComputedStyle(el);
-
-        const overflow =
-          style.overflowY;
-
-        if (
-          overflow !== "auto" &&
-          overflow !== "scroll" &&
-          overflow !== "overlay"
-        ) {
-          return;
-        }
-
-        if (
-          el.scrollHeight >
-          el.clientHeight + 300
-        ) {
-          add(el);
-        }
-      });
-
-    /*
-     * Always include window/document.
-     */
-    add(document.scrollingElement);
-
-    return result;
-  }
-
-  /*
-   * =========================================================
-   * MUTATION WAIT
-   * =========================================================
-   */
-
-  function waitForDOMChange(
-    oldSignature,
-    timeout = 1000
-  ) {
-    return new Promise(resolve => {
-      let finished = false;
-
-      const finish = changed => {
-        if (finished) {
-          return;
-        }
-
-        finished = true;
-
-        if (localObserver) {
-          localObserver.disconnect();
-        }
-
-        resolve(changed);
-      };
-
-      const localObserver =
-        new MutationObserver(() => {
-          finish(true);
-        });
-
-      localObserver.observe(
-        document.body,
-        {
-          childList: true,
-          subtree: true
-        }
-      );
-
-      setTimeout(() => {
-        const newSignature =
-          getPageSignature();
-
-        finish(
-          newSignature !==
-          oldSignature
-        );
-      }, timeout);
-    });
-  }
-
-  function getPageSignature() {
-    const cards =
-      findRecordingCards();
-
-    /*
-     * A signature based on card count + text allows us to
-     * detect both newly-created cards and cards whose content
-     * has changed.
-     */
-    let signature =
-      `${cards.length}|`;
-
-    cards.slice(-10)
-      .forEach(card => {
-        signature +=
-          normalize(
-            card.innerText ||
-            card.textContent
-          ).slice(0, 100) +
-          "|";
-      });
-
-    return signature;
-  }
-
-  /*
-   * =========================================================
-   * GRADUAL SCROLLING
-   * =========================================================
-   *
-   * This is the important part.
-   *
-   * Do NOT jump straight to scrollHeight.
-   *
-   * Panopto's lazy loader may use IntersectionObserver and
-   * expects its sentinel to actually travel through the
-   * viewport.
-   * =========================================================
-   */
-
-  async function graduallyScrollContainer(
-    container
-  ) {
-    const isDocument =
-      container ===
-      document.scrollingElement;
-
-    let oldSignature =
-      getPageSignature();
-
-    let stableAtBottom = 0;
-
-    const MAX_STEPS = 80;
-    const STEP = 550;
-
-    for (
-      let step = 0;
-      step < MAX_STEPS;
-      step++
-    ) {
-      const beforeHeight =
-        isDocument
-          ? Math.max(
-              document.body.scrollHeight,
-              document.documentElement.scrollHeight
-            )
-          : container.scrollHeight;
-
-      const beforePosition =
-        isDocument
-          ? window.scrollY
-          : container.scrollTop;
-
-      const maxScroll =
-        Math.max(
-          0,
-          beforeHeight -
-            (
-              isDocument
-                ? window.innerHeight
-                : container.clientHeight
-            )
-        );
-
-      const nextPosition =
-        Math.min(
-          maxScroll,
-          beforePosition + STEP
-        );
-
-      if (
-        nextPosition <=
-        beforePosition + 2
-      ) {
-        stableAtBottom++;
-
-        if (
-          stableAtBottom >= 3
-        ) {
-          break;
-        }
-
-        await new Promise(resolve =>
-          setTimeout(resolve, 250)
-        );
-
-        continue;
-      }
-
-      stableAtBottom = 0;
-
-      if (isDocument) {
-        window.scrollTo(
-          0,
-          nextPosition
-        );
-
-        /*
-         * Panopto/listeners may be listening specifically
-         * for scroll events.
-         */
-        window.dispatchEvent(
-          new Event("scroll", {
-            bubbles: false
-          })
-        );
-      } else {
-        container.scrollTop =
-          nextPosition;
-
-        container.dispatchEvent(
-          new Event("scroll", {
-            bubbles: true
-          })
-        );
-      }
-
-      /*
-       * Give IntersectionObserver and Panopto's React code
-       * time to process the new viewport.
-       */
-      await new Promise(resolve =>
-        setTimeout(resolve, 180)
-      );
-
-      /*
-       * Wait briefly for a recording batch.
-       */
-      const changed =
-        await waitForDOMChange(
-          oldSignature,
-          550
-        );
-
-      const newSignature =
-        getPageSignature();
-
-      if (changed) {
-        oldSignature =
-          newSignature;
-
-        discoverEntries({
-          save: true
-        });
-      }
-
-      /*
-       * Recalculate because Panopto may have increased the
-       * scroll height while we were waiting.
-       */
-      const afterHeight =
-        isDocument
-          ? Math.max(
-              document.body.scrollHeight,
-              document.documentElement.scrollHeight
-            )
-          : container.scrollHeight;
-
-      const afterPosition =
-        isDocument
-          ? window.scrollY
-          : container.scrollTop;
-
-      if (
-        afterPosition >=
-        afterHeight -
-        (
-          isDocument
-            ? window.innerHeight
-            : container.clientHeight
-        ) -
-        10
-      ) {
-        /*
-         * We are at the current bottom. Panopto may still
-         * append another batch after a delay.
-         */
-        await new Promise(resolve =>
-          setTimeout(resolve, 500)
-        );
-
-        const newerHeight =
-          isDocument
-            ? Math.max(
-                document.body.scrollHeight,
-                document.documentElement.scrollHeight
-              )
-            : container.scrollHeight;
-
-        if (
-          newerHeight >
-          afterHeight + 20
-        ) {
-          oldSignature =
-            getPageSignature();
-
-          continue;
-        }
-
-        stableAtBottom++;
-
-        if (
-          stableAtBottom >= 3
-        ) {
-          break;
-        }
-      }
-    }
-  }
-
-  /*
-   * =========================================================
-   * LOAD EVERYTHING PANOPTO WILL LOAD
-   * =========================================================
-   */
-
-  async function loadMoreRecordings() {
-    if (loadingMore) {
-      return;
-    }
-
-    loadingMore = true;
-
-    try {
-      /*
-       * Absolutely critical:
-       *
-       * Remove our filtering before scrolling so Panopto sees
-       * its entire recording list and its lazy-load sentinel.
-       */
-      showEverything();
-
-      await new Promise(resolve =>
-        requestAnimationFrame(() => {
-          requestAnimationFrame(resolve);
-        })
-      );
-
-      /*
-       * Discover what is already on screen.
-       */
-      discoverEntries({
-        save: true
-      });
-
-      /*
-       * Find likely scrolling elements.
-       */
-      let containers =
-        getScrollContainers();
-
-      /*
-       * If we couldn't identify a special container, use
-       * document scrolling.
-       */
-      if (
-        containers.length === 0
-      ) {
-        containers = [
-          document.scrollingElement
-        ];
-      }
-
-      /*
-       * Sort the containers so the largest scroll area is
-       * processed first.
-       */
-      containers.sort((a, b) => {
-        const ah =
-          a === document.scrollingElement
-            ? document.documentElement.scrollHeight
-            : a.scrollHeight;
-
-        const bh =
-          b === document.scrollingElement
-            ? document.documentElement.scrollHeight
-            : b.scrollHeight;
-
-        return bh - ah;
-      });
-
-      /*
-       * Process the most likely containers.
-       *
-       * Usually the first one is enough, but Panopto's layout
-       * can have nested scrolling regions.
-       */
-      for (
-        const container of containers.slice(
-          0,
-          3
-        )
-      ) {
-        await graduallyScrollContainer(
-          container
-        );
-
-        discoverEntries({
-          save: true
-        });
-      }
-
-      /*
-       * One final scroll-to-bottom event.
-       */
-      const scrollElement =
-        document.scrollingElement;
-
-      if (scrollElement) {
-        window.scrollTo(
-          0,
-          scrollElement.scrollHeight
-        );
-
-        window.dispatchEvent(
-          new Event("scroll")
-        );
-
-        await new Promise(resolve =>
-          setTimeout(resolve, 800)
-        );
-      }
-
-      /*
-       * Final discovery.
-       */
-      discoverEntries({
-        save: true
-      });
-
-    } finally {
-      loadingMore = false;
-    }
-  }
-
-  /*
-   * =========================================================
-   * REFRESH AFTER SELECTION CHANGE
-   * =========================================================
-   */
-
-  async function refreshAfterSelectionChange() {
-    /*
-     * First make the whole Panopto list visible.
-     */
-    showEverything();
-
-    /*
-     * Then actually exercise Panopto's lazy loader.
-     */
-    await loadMoreRecordings();
-
-    /*
-     * Only AFTER lazy loading is finished do we hide
-     * nonmatching cards.
-     */
-    applyFilter();
+    updatePanel(
+      matchingCount
+    );
   }
 
   /*
@@ -996,6 +585,532 @@
       term: "Fall",
       year
     };
+  }
+
+  /*
+   * =========================================================
+   * PAGE SIGNATURE
+   * =========================================================
+   */
+
+  function getPageSignature() {
+    const cards =
+      findRecordingCards();
+
+    let signature =
+      `${cards.length}|`;
+
+    cards.slice(-15)
+      .forEach(card => {
+        signature +=
+          normalize(
+            card.innerText ||
+            card.textContent
+          ).slice(0, 120) +
+          "|";
+      });
+
+    return signature;
+  }
+
+  /*
+   * =========================================================
+   * SCROLL CONTAINER DETECTION
+   * =========================================================
+   */
+
+  function getScrollContainers() {
+    const result = [];
+    const seen = new Set();
+
+    function add(element) {
+      if (!element) {
+        return;
+      }
+
+      if (
+        seen.has(element)
+      ) {
+        return;
+      }
+
+      seen.add(element);
+      result.push(element);
+    }
+
+    /*
+     * Look around recording cards first.
+     */
+    const cards =
+      findRecordingCards();
+
+    cards.slice(0, 50)
+      .forEach(card => {
+        let element =
+          card.parentElement;
+
+        while (
+          element &&
+          element !== document.body &&
+          element !== document.documentElement
+        ) {
+          const style =
+            getComputedStyle(element);
+
+          const overflow =
+            style.overflowY;
+
+          if (
+            (
+              overflow === "auto" ||
+              overflow === "scroll" ||
+              overflow === "overlay"
+            ) &&
+            element.scrollHeight >
+              element.clientHeight + 50
+          ) {
+            add(element);
+          }
+
+          element =
+            element.parentElement;
+        }
+      });
+
+    /*
+     * Search for large scrolling containers.
+     */
+    document
+      .querySelectorAll("*")
+      .forEach(element => {
+        if (
+          result.length >= 10
+        ) {
+          return;
+        }
+
+        const style =
+          getComputedStyle(element);
+
+        const overflow =
+          style.overflowY;
+
+        if (
+          overflow !== "auto" &&
+          overflow !== "scroll" &&
+          overflow !== "overlay"
+        ) {
+          return;
+        }
+
+        if (
+          element.scrollHeight >
+          element.clientHeight + 300
+        ) {
+          add(element);
+        }
+      });
+
+    /*
+     * Document scrolling element goes last.
+     */
+    add(
+      document.scrollingElement
+    );
+
+    return result;
+  }
+
+  /*
+   * =========================================================
+   * WAIT
+   * =========================================================
+   */
+
+  function sleep(ms) {
+    return new Promise(resolve => {
+      setTimeout(resolve, ms);
+    });
+  }
+
+  function waitForMutation(
+    oldSignature,
+    timeout = 800
+  ) {
+    return new Promise(resolve => {
+      let finished = false;
+
+      let localObserver = null;
+
+      function finish(changed) {
+        if (finished) {
+          return;
+        }
+
+        finished = true;
+
+        if (localObserver) {
+          localObserver.disconnect();
+        }
+
+        resolve(changed);
+      }
+
+      localObserver =
+        new MutationObserver(() => {
+          finish(true);
+        });
+
+      try {
+        localObserver.observe(
+          document.body,
+          {
+            childList: true,
+            subtree: true
+          }
+        );
+      } catch (error) {
+        finish(false);
+        return;
+      }
+
+      setTimeout(() => {
+        const newSignature =
+          getPageSignature();
+
+        finish(
+          newSignature !==
+          oldSignature
+        );
+      }, timeout);
+    });
+  }
+
+  /*
+   * =========================================================
+   * GRADUAL SCROLLING
+   * =========================================================
+   *
+   * Panopto's lazy loader often needs the loading sentinel
+   * to actually pass through a viewport.
+   *
+   * We therefore scroll in small increments instead of
+   * jumping directly to scrollHeight.
+   * =========================================================
+   */
+
+  async function graduallyScrollContainer(
+    container
+  ) {
+    if (
+      destroyed ||
+      !container
+    ) {
+      return;
+    }
+
+    const isDocument =
+      container ===
+      document.scrollingElement;
+
+    const MAX_STEPS = 100;
+    const STEP = 500;
+
+    let stableAtBottom = 0;
+    let oldSignature =
+      getPageSignature();
+
+    for (
+      let step = 0;
+      step < MAX_STEPS;
+      step++
+    ) {
+      if (
+        destroyed
+      ) {
+        return;
+      }
+
+      const viewportHeight =
+        isDocument
+          ? window.innerHeight
+          : container.clientHeight;
+
+      const scrollHeight =
+        isDocument
+          ? Math.max(
+              document.body.scrollHeight,
+              document.documentElement.scrollHeight
+            )
+          : container.scrollHeight;
+
+      const currentPosition =
+        isDocument
+          ? window.scrollY
+          : container.scrollTop;
+
+      const maximum =
+        Math.max(
+          0,
+          scrollHeight -
+            viewportHeight
+        );
+
+      const nextPosition =
+        Math.min(
+          maximum,
+          currentPosition + STEP
+        );
+
+      if (
+        nextPosition <=
+        currentPosition + 2
+      ) {
+        stableAtBottom++;
+
+        /*
+         * Give Panopto several chances to append another
+         * batch after reaching the current bottom.
+         */
+        await sleep(450);
+
+        const newHeight =
+          isDocument
+            ? Math.max(
+                document.body.scrollHeight,
+                document.documentElement.scrollHeight
+              )
+            : container.scrollHeight;
+
+        if (
+          newHeight >
+          scrollHeight + 20
+        ) {
+          stableAtBottom = 0;
+          oldSignature =
+            getPageSignature();
+          continue;
+        }
+
+        const newSignature =
+          getPageSignature();
+
+        if (
+          newSignature !==
+          oldSignature
+        ) {
+          stableAtBottom = 0;
+          oldSignature =
+            newSignature;
+
+          discoverEntries({
+            save: true
+          });
+
+          continue;
+        }
+
+        if (
+          stableAtBottom >= 4
+        ) {
+          break;
+        }
+
+        continue;
+      }
+
+      stableAtBottom = 0;
+
+      if (isDocument) {
+        window.scrollTo({
+          top: nextPosition,
+          behavior: "auto"
+        });
+
+        window.dispatchEvent(
+          new Event("scroll")
+        );
+      } else {
+        container.scrollTop =
+          nextPosition;
+
+        container.dispatchEvent(
+          new Event("scroll", {
+            bubbles: true
+          })
+        );
+      }
+
+      /*
+       * Allow IntersectionObserver, React and Panopto's
+       * scroll handler to run.
+       */
+      await sleep(200);
+
+      const changed =
+        await waitForMutation(
+          oldSignature,
+          650
+        );
+
+      const newSignature =
+        getPageSignature();
+
+      if (
+        changed ||
+        newSignature !==
+        oldSignature
+      ) {
+        oldSignature =
+          newSignature;
+
+        discoverEntries({
+          save: true
+        });
+      }
+    }
+  }
+
+  /*
+   * =========================================================
+   * LOAD MORE RECORDINGS
+   * =========================================================
+   */
+
+  async function loadMoreRecordings() {
+    if (
+      loadingMore ||
+      destroyed
+    ) {
+      return;
+    }
+
+    loadingMore = true;
+
+    try {
+      /*
+       * NEVER leave filtered cards hidden while trying to
+       * trigger Panopto's lazy loader.
+       */
+      showEverything();
+
+      await sleep(100);
+
+      discoverEntries({
+        save: true
+      });
+
+      let containers =
+        getScrollContainers();
+
+      if (
+        containers.length === 0
+      ) {
+        containers = [
+          document.scrollingElement
+        ];
+      }
+
+      /*
+       * Largest scroll areas first.
+       */
+      containers.sort((a, b) => {
+        const aHeight =
+          a === document.scrollingElement
+            ? Math.max(
+                document.body.scrollHeight,
+                document.documentElement.scrollHeight
+              )
+            : a.scrollHeight;
+
+        const bHeight =
+          b === document.scrollingElement
+            ? Math.max(
+                document.body.scrollHeight,
+                document.documentElement.scrollHeight
+              )
+            : b.scrollHeight;
+
+        return bHeight - aHeight;
+      });
+
+      /*
+       * Try up to three possible scrolling containers.
+       */
+      for (
+        const container of containers.slice(0, 3)
+      ) {
+        await graduallyScrollContainer(
+          container
+        );
+
+        discoverEntries({
+          save: true
+        });
+      }
+
+      /*
+       * Give the page a final opportunity to process its
+       * loading sentinel.
+       */
+      await sleep(500);
+
+      discoverEntries({
+        save: true
+      });
+
+    } catch (error) {
+      /*
+       * Do not allow a failed lazy-load attempt to destroy
+       * the extension.
+       */
+      console.warn(
+        "Panopto Course Filter: lazy loading pass failed.",
+        error
+      );
+    } finally {
+      loadingMore = false;
+    }
+  }
+
+  /*
+   * =========================================================
+   * SELECTION CHANGE
+   * =========================================================
+   */
+
+  async function refreshAfterSelectionChange() {
+    if (
+      destroyed
+    ) {
+      return;
+    }
+
+    /*
+     * First restore the complete list.
+     */
+    showEverything();
+
+    /*
+     * Then force Panopto's lazy loader to run.
+     */
+    await loadMoreRecordings();
+
+    /*
+     * Now apply the new selection.
+     */
+    if (
+      state.enabled &&
+      state.selected.length > 0
+    ) {
+      applyFilter();
+    } else {
+      showEverything();
+
+      updatePanel(
+        findRecordingCards().length
+      );
+    }
   }
 
   /*
@@ -1109,28 +1224,24 @@
     };
 
     /*
-     * ENABLE
+     * ENABLE/DISABLE
      */
 
-    const enabled =
+    const enabledCheckbox =
       document.getElementById(
         "pcf-enabled"
       );
 
-    enabled.checked =
+    enabledCheckbox.checked =
       state.enabled;
 
-    enabled.onchange =
+    enabledCheckbox.onchange =
       async event => {
         state.enabled =
           event.target.checked;
 
         await saveState();
 
-        /*
-         * Even when disabling the filter, load the rest
-         * of Panopto's recordings.
-         */
         await refreshAfterSelectionChange();
       };
 
@@ -1156,12 +1267,6 @@
 
         await saveState();
 
-        /*
-         * This is deliberately NOT just "applyFilter".
-         *
-         * It restores every card and runs Panopto's lazy
-         * loader so additional videos appear.
-         */
         await refreshAfterSelectionChange();
       };
 
@@ -1194,7 +1299,7 @@
       };
 
     /*
-     * USE SAVED
+     * USE SAVED CURRENT
      */
 
     document.getElementById(
@@ -1210,7 +1315,7 @@
       };
 
     /*
-     * SAVE CURRENT
+     * SAVE SELECTED
      */
 
     document.getElementById(
@@ -1226,7 +1331,7 @@
       };
 
     /*
-     * CLEAR SAVED
+     * CLEAR SAVED CURRENT
      */
 
     document.getElementById(
@@ -1285,7 +1390,7 @@
 
         try {
           /*
-           * Completely forget discovered courses.
+           * Forget discovered courses AND selections.
            */
           state.entries = [];
           state.selected = [];
@@ -1295,28 +1400,33 @@
           await saveState();
 
           /*
-           * Restore Panopto's full layout.
+           * Make sure Panopto has its full DOM again.
            */
           showEverything();
 
           /*
-           * Rediscover what's currently rendered.
+           * Scan current content.
            */
           discoverEntries({
-            replace: true
+            replace: true,
+            save: true
           });
 
-          await saveState();
-
           /*
-           * Scroll through the page to force Panopto to
-           * discover additional recordings/classes.
+           * Force additional Panopto content to load.
            */
           await loadMoreRecordings();
 
+          /*
+           * Scan everything that appeared.
+           */
+          discoverEntries({
+            save: true
+          });
+
           updatePanel();
 
-          applyFilter();
+          showEverything();
         } finally {
           button.disabled = false;
           button.textContent =
@@ -1382,18 +1492,19 @@
           );
         }
 
-        groups.get(group)
+        groups
+          .get(group)
           .push(entry);
       });
 
     groups.forEach(
       (entries, semester) => {
-        const header =
+        const semesterHeader =
           document.createElement(
             "div"
           );
 
-        header.className =
+        semesterHeader.className =
           "pcf-semester-header";
 
         const collapsed =
@@ -1402,7 +1513,7 @@
               semester
             ];
 
-        header.innerHTML = `
+        semesterHeader.innerHTML = `
           <button class="pcf-semester-toggle">
             ${collapsed ? "▶" : "▼"}
           </button>
@@ -1414,22 +1525,28 @@
           </button>
         `;
 
-        list.appendChild(header);
+        list.appendChild(
+          semesterHeader
+        );
 
-        const courses =
+        const semesterCourses =
           document.createElement(
             "div"
           );
 
-        courses.className =
+        semesterCourses.className =
           "pcf-semester-courses";
 
         if (collapsed) {
-          courses.style.display =
+          semesterCourses.style.display =
             "none";
         }
 
-        header
+        /*
+         * Collapse/expand
+         */
+
+        semesterHeader
           .querySelector(
             ".pcf-semester-toggle"
           )
@@ -1450,7 +1567,11 @@
             );
           };
 
-        header
+        /*
+         * Select all semester courses
+         */
+
+        semesterHeader
           .querySelector(
             ".pcf-semester-all"
           )
@@ -1463,6 +1584,7 @@
               );
 
             const allSelected =
+              keys.length > 0 &&
               keys.every(key =>
                 state.selected.includes(
                   key
@@ -1496,6 +1618,10 @@
             await refreshAfterSelectionChange();
           };
 
+        /*
+         * Individual courses
+         */
+
         entries.forEach(entry => {
           const label =
             document.createElement(
@@ -1517,6 +1643,10 @@
             state.selected.includes(
               entry.key
             );
+
+          /*
+           * Saved current class
+           */
 
           if (
             state.currentClasses.includes(
@@ -1554,11 +1684,11 @@
               await saveState();
 
               /*
-               * Crucial:
+               * IMPORTANT:
                *
-               * Selecting a SECOND class does not merely
-               * filter the videos already present. It forces
-               * Panopto's lazy loader to run again first.
+               * Do NOT merely filter the videos currently
+               * present. Restore everything and run the
+               * Panopto lazy loader again.
                */
               await refreshAfterSelectionChange();
             };
@@ -1594,16 +1724,20 @@
             );
           }
 
-          courses.appendChild(
+          semesterCourses.appendChild(
             label
           );
         });
 
         list.appendChild(
-          courses
+          semesterCourses
         );
       }
     );
+
+    /*
+     * Recording count
+     */
 
     if (
       matchingCount === null
@@ -1611,18 +1745,20 @@
       const cards =
         findRecordingCards();
 
-      matchingCount =
-        (
-          !state.enabled ||
-          state.selected.length === 0
-        )
-          ? cards.length
-          : cards.filter(
-              card =>
-                cardMatchesSelection(
-                  card
-                )
-            ).length;
+      if (
+        !state.enabled ||
+        state.selected.length === 0
+      ) {
+        matchingCount =
+          cards.length;
+      } else {
+        matchingCount =
+          cards.filter(card =>
+            cardMatchesSelection(
+              card
+            )
+          ).length;
+      }
     }
 
     const countElement =
@@ -1651,7 +1787,7 @@
       </div>
 
       ${
-        state.currentClasses.length
+        state.currentClasses.length > 0
           ? `
             <div class="pcf-saved-count">
               ⭐ ${state.currentClasses.length}
@@ -1690,13 +1826,18 @@
       "🎓 Courses";
 
     button.onclick = () => {
-      document
-        .getElementById(
+      const panel =
+        document.getElementById(
           "pcf-panel"
-        )
-        .classList.remove(
-          "pcf-hidden"
         );
+
+      if (!panel) {
+        return;
+      }
+
+      panel.classList.remove(
+        "pcf-hidden"
+      );
 
       updatePanel();
     };
@@ -1708,26 +1849,31 @@
 
   /*
    * =========================================================
-   * BACKGROUND DISCOVERY
+   * BACKGROUND COURSE DISCOVERY
    * =========================================================
    */
 
   function scheduleDiscovery() {
+    if (destroyed) {
+      return;
+    }
+
     clearTimeout(
       scanTimer
     );
 
     scanTimer =
-      setTimeout(
-        () => {
-          discoverEntries({
-            save: true
-          });
+      setTimeout(() => {
+        if (destroyed) {
+          return;
+        }
 
-          updatePanel();
-        },
-        500
-      );
+        discoverEntries({
+          save: true
+        });
+
+        updatePanel();
+      }, 600);
   }
 
   /*
@@ -1737,52 +1883,87 @@
    */
 
   async function init() {
-    await loadState();
+    const loaded =
+      await loadState();
+
+    if (
+      !loaded &&
+      destroyed
+    ) {
+      return;
+    }
 
     createPanel();
     createLauncher();
 
     /*
-     * Discover whatever is currently on the page, but merge
-     * it with remembered classes.
+     * Merge currently visible courses into remembered
+     * courses.
      */
     discoverEntries({
       save: true
     });
 
     /*
-     * DO NOT filter immediately.
+     * Start with everything visible.
      *
-     * First let Panopto finish constructing its recording
-     * list.
+     * This is important because hiding cards too early can
+     * interfere with Panopto's lazy loader.
      */
     showEverything();
 
     /*
-     * Watch Panopto add/remove recording DOM nodes.
-     *
-     * This observer does NOT filter cards. That is intentional.
+     * Watch for dynamically-created Panopto content.
      */
-    observer =
+    const observer =
       new MutationObserver(() => {
         scheduleDiscovery();
       });
 
-    observer.observe(
-      document.body,
+    try {
+      observer.observe(
+        document.body,
+        {
+          childList: true,
+          subtree: true
+        }
+      );
+    } catch (error) {
+      console.warn(
+        "Panopto Course Filter: could not start DOM observer.",
+        error
+      );
+    }
+
+    /*
+     * Remember courses as the user naturally scrolls.
+     */
+    window.addEventListener(
+      "scroll",
+      () => {
+        scheduleDiscovery();
+      },
       {
-        childList: true,
-        subtree: true
+        passive: true
       }
     );
 
     /*
-     * Give Panopto time to initialize before starting our
-     * own lazy-load pass.
+     * Let Panopto finish its own initialization first.
      */
     setTimeout(
       async () => {
+        if (destroyed) {
+          return;
+        }
+
         await loadMoreRecordings();
+
+        if (
+          destroyed
+        ) {
+          return;
+        }
 
         if (
           state.enabled &&
@@ -1797,27 +1978,37 @@
           );
         }
       },
-      1200
-    );
-
-    /*
-     * User scrolling should cause new classes to be remembered.
-     */
-    window.addEventListener(
-      "scroll",
-      () => {
-        scheduleDiscovery();
-      },
-      {
-        passive: true
-      }
+      1500
     );
   }
+
+  /*
+   * =========================================================
+   * START
+   * =========================================================
+   */
 
   if (
     location.hostname ===
     "auburn.hosted.panopto.com"
   ) {
-    init();
+    init().catch(error => {
+      if (
+        String(error).includes(
+          "Extension context invalidated"
+        )
+      ) {
+        console.warn(
+          "Panopto Course Filter: extension context was invalidated. Refresh the Panopto page."
+        );
+
+        return;
+      }
+
+      console.error(
+        "Panopto Course Filter initialization failed.",
+        error
+      );
+    });
   }
 })();
