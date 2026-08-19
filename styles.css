@@ -63,7 +63,9 @@
   border-radius: 7px;
 }
 
-/* Current classes */
+/* ---------------------------------------------------------
+   CURRENT CLASSES
+   --------------------------------------------------------- */
 
 .pcf-current-box {
   margin: 5px 14px 8px;
@@ -73,17 +75,23 @@
 
   border: 1px solid #ddd;
   border-radius: 7px;
+
+  text-align: center;
 }
 
 .pcf-current-title {
-  margin-bottom: 6px;
+  margin-bottom: 7px;
+
   font-weight: bold;
+  text-align: left;
 }
 
 .pcf-current-buttons {
   display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+
+  gap: 6px;
 }
 
 .pcf-current-buttons button {
@@ -91,15 +99,27 @@
   background: white;
   border-radius: 6px;
 
-  padding: 5px 7px;
+  padding: 5px 8px;
 
   cursor: pointer;
   font-size: 12px;
 }
 
+.pcf-current-buttons button:hover {
+  background: #f0f0f0;
+}
+
+/* ---------------------------------------------------------
+   MAIN BUTTONS
+   --------------------------------------------------------- */
+
 .pcf-buttons {
   display: flex;
+  justify-content: center;
+  align-items: center;
+
   gap: 6px;
+
   padding: 3px 14px 8px;
 }
 
@@ -114,17 +134,20 @@
   cursor: pointer;
 }
 
+.pcf-buttons button:hover,
+#pcf-refresh:hover {
+  background: #f0f0f0;
+}
+
 .pcf-toggle {
   display: block;
   padding: 5px 14px;
 }
 
-/*
- * COURSE LIST
- *
- * Keep everything above and below this section at its
- * original size. Only the list itself scrolls.
- */
+/* ---------------------------------------------------------
+   COURSE LIST
+   --------------------------------------------------------- */
+
 #pcf-course-list {
   height: 45vh;
   max-height: 45vh;
@@ -136,8 +159,6 @@
 
   box-sizing: border-box;
 }
-
-/* Scrollbar */
 
 #pcf-course-list::-webkit-scrollbar {
   width: 8px;
@@ -156,7 +177,9 @@
   background: #888;
 }
 
-/* Semester headings */
+/* ---------------------------------------------------------
+   SEMESTER HEADER
+   --------------------------------------------------------- */
 
 .pcf-semester-header {
   display: flex;
@@ -177,7 +200,9 @@
 .pcf-semester-all {
   border: 1px solid #bbb;
   background: white;
+
   border-radius: 5px;
+
   cursor: pointer;
 }
 
@@ -192,14 +217,23 @@
 
 .pcf-semester-all {
   padding: 4px 7px;
+
   font-size: 11px;
 }
 
-/* Courses */
+.pcf-semester-toggle:hover,
+.pcf-semester-all:hover {
+  background: #f0f0f0;
+}
+
+/* ---------------------------------------------------------
+   COURSES
+   --------------------------------------------------------- */
 
 .pcf-course {
   display: flex;
   align-items: center;
+
   gap: 8px;
 
   padding: 8px 14px;
@@ -219,7 +253,9 @@
   color: #d6a500;
 }
 
-/* Footer */
+/* ---------------------------------------------------------
+   FOOTER
+   --------------------------------------------------------- */
 
 .pcf-footer {
   display: flex;
@@ -238,7 +274,9 @@
   margin-top: 3px;
 }
 
-/* Launcher */
+/* ---------------------------------------------------------
+   LAUNCHER
+   --------------------------------------------------------- */
 
 #pcf-launcher {
   position: fixed;
