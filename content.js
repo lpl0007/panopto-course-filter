@@ -21,6 +21,17 @@
 
   /*
    * =========================================================
+   * LOAD MORE
+   * =========================================================
+   */
+
+  let loadingMore = false;
+  let loadMoreAttempts = 0;
+
+  const MAX_LOAD_MORE_ATTEMPTS = 8;
+
+  /*
+   * =========================================================
    * COURSE PARSING
    * =========================================================
    */
@@ -474,6 +485,177 @@
 
   /*
    * =========================================================
+   * LOAD MORE VIDEOS
+   * =========================================================
+   *
+   * Panopto can use different button markup depending on
+   * which page/component is being displayed.
+   *
+   * We look for actual buttons/links containing "Load More"
+   * and only click visible, enabled controls.
+   *
+   * This intentionally does NOT click arbitrary "More"
+   * buttons because those could open menus or other UI.
+   */
+
+  function findLoadMoreButton() {
+    const candidates =
+      document.querySelectorAll(
+        "button, a, [role='button']"
+      );
+
+    for (const element of candidates) {
+      if (
+        element.closest &&
+        element.closest("#pcf-panel")
+      ) {
+        continue;
+      }
+
+      const text =
+        normalize(
+          element.innerText ||
+          element.textContent ||
+          element.getAttribute("aria-label") ||
+          element.getAttribute("title")
+        ).toLowerCase();
+
+      if (
+        !text ||
+        !/load\s+more/.test(text)
+      ) {
+        continue;
+      }
+
+      if (
+        element.disabled ||
+        element.getAttribute("aria-disabled") === "true"
+      ) {
+        continue;
+      }
+
+      const style =
+        window.getComputedStyle(element);
+
+      if (
+        style.display === "none" ||
+        style.visibility === "hidden"
+      ) {
+        continue;
+      }
+
+      const rect =
+        element.getBoundingClientRect();
+
+      if (
+        rect.width <= 0 ||
+        rect.height <= 0
+      ) {
+        continue;
+      }
+
+      return element;
+    }
+
+    return null;
+  }
+
+  async function loadMoreVideosIfNeeded(
+    visibleMatchingCount = 0
+  ) {
+    if (
+      destroyed ||
+      loadingMore ||
+      !state.enabled ||
+      state.selected.length === 0
+    ) {
+      return;
+    }
+
+    /*
+     * If we already have a reasonable number of matching
+     * recordings, don't keep loading more.
+     */
+    if (
+      visibleMatchingCount >= 12
+    ) {
+      loadMoreAttempts = 0;
+      return;
+    }
+
+    if (
+      loadMoreAttempts >=
+      MAX_LOAD_MORE_ATTEMPTS
+    ) {
+      return;
+    }
+
+    const button =
+      findLoadMoreButton();
+
+    if (!button) {
+      return;
+    }
+
+    loadingMore = true;
+    loadMoreAttempts++;
+
+    const oldCardCount =
+      findRecordingCards().length;
+
+    try {
+      button.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+      });
+
+      await new Promise(resolve =>
+        setTimeout(resolve, 200)
+      );
+
+      button.click();
+
+      /*
+       * Give Panopto time to insert the new cards.
+       */
+      await new Promise(resolve =>
+        setTimeout(resolve, 900)
+      );
+
+      discoverEntries();
+
+      const newCardCount =
+        findRecordingCards().length;
+
+      /*
+       * If nothing was added, stop trying.
+       */
+      if (
+        newCardCount <= oldCardCount
+      ) {
+        loadMoreAttempts =
+          MAX_LOAD_MORE_ATTEMPTS;
+      } else {
+        /*
+         * Apply the filter immediately so newly loaded
+         * unmatched recordings disappear from the layout.
+         */
+        applyFilter();
+      }
+
+    } catch (error) {
+      console.warn(
+        "Panopto Course Filter: could not load more videos.",
+        error
+      );
+
+    } finally {
+      loadingMore = false;
+    }
+  }
+
+  /*
+   * =========================================================
    * FILTERING
    * =========================================================
    */
@@ -483,6 +665,16 @@
       .forEach(card => {
         card.classList.remove(
           "pcf-filtered-out"
+        );
+
+        /*
+         * IMPORTANT:
+         * display:none removes the card from the layout.
+         * This prevents blank spaces where filtered cards
+         * used to be.
+         */
+        card.style.removeProperty(
+          "display"
         );
 
         card.style.removeProperty(
@@ -519,6 +711,10 @@
         );
 
         card.style.removeProperty(
+          "display"
+        );
+
+        card.style.removeProperty(
           "visibility"
         );
 
@@ -542,6 +738,13 @@
           "pcf-filtered-out"
         );
 
+        /*
+         * Restore the card to its normal layout.
+         */
+        card.style.removeProperty(
+          "display"
+        );
+
         card.style.removeProperty(
           "visibility"
         );
@@ -561,6 +764,16 @@
           "pcf-filtered-out"
         );
 
+        /*
+         * display:none is the key difference.
+         *
+         * visibility:hidden leaves an empty hole.
+         * display:none lets Panopto's grid/flex layout
+         * close the hole and move the remaining videos up.
+         */
+        card.style.display =
+          "none";
+
         card.style.visibility =
           "hidden";
 
@@ -573,6 +786,14 @@
     });
 
     schedulePanelUpdate(
+      matchingCount
+    );
+
+    /*
+     * If filtering leaves only a few matching videos,
+     * try to load another batch from Panopto.
+     */
+    void loadMoreVideosIfNeeded(
       matchingCount
     );
   }
@@ -822,6 +1043,8 @@
     state.enabled = true;
     state.customNames = {};
 
+    loadMoreAttempts = 0;
+
     try {
       if (contextValid()) {
         await chrome.storage.local.remove(
@@ -864,122 +1087,6 @@
     updatePanel(
       findRecordingCards().length
     );
-  }
-
-  /*
-   * =========================================================
-   * TOOLTIP
-   * =========================================================
-   */
-
-  function positionCourseTooltip(
-    element,
-    tooltip
-  ) {
-    if (!element || !tooltip) {
-      return;
-    }
-
-    const rect =
-      element.getBoundingClientRect();
-
-    /*
-     * Make visible temporarily so
-     * getBoundingClientRect() has
-     * the correct dimensions.
-     */
-
-    const tooltipRect =
-      tooltip.getBoundingClientRect();
-
-    const margin = 8;
-
-    let left =
-      rect.left;
-
-    let top =
-      rect.bottom + margin;
-
-    /*
-     * Keep horizontally inside
-     * the browser window.
-     */
-
-    if (
-      left + tooltipRect.width >
-      window.innerWidth - margin
-    ) {
-      left =
-        window.innerWidth -
-        tooltipRect.width -
-        margin;
-    }
-
-    if (left < margin) {
-      left = margin;
-    }
-
-    /*
-     * If there isn't room below,
-     * place it above.
-     */
-
-    if (
-      top + tooltipRect.height >
-      window.innerHeight - margin
-    ) {
-      top =
-        rect.top -
-        tooltipRect.height -
-        margin;
-    }
-
-    if (top < margin) {
-      top = margin;
-    }
-
-    tooltip.style.left =
-      `${left}px`;
-
-    tooltip.style.top =
-      `${top}px`;
-  }
-
-  function showCourseTooltip(
-    element,
-    text
-  ) {
-    const tooltip =
-      document.getElementById(
-        "pcf-tooltip"
-      );
-
-    if (!tooltip) {
-      return;
-    }
-
-    tooltip.textContent =
-      text;
-
-    tooltip.style.display =
-      "block";
-
-    positionCourseTooltip(
-      element,
-      tooltip
-    );
-  }
-
-  function hideCourseTooltip() {
-    const tooltip =
-      document.getElementById(
-        "pcf-tooltip"
-      );
-
-    if (tooltip) {
-      tooltip.style.display =
-        "none";
-    }
   }
 
   /*
@@ -1112,26 +1219,6 @@
       </div>
     `;
 
-    /*
-     * Create tooltip OUTSIDE the
-     * scrollable course list.
-     */
-
-    const tooltip =
-      document.createElement(
-        "div"
-      );
-
-    tooltip.id =
-      "pcf-tooltip";
-
-    tooltip.style.display =
-      "none";
-
-    document.body.appendChild(
-      tooltip
-    );
-
     document.body.appendChild(
       panel
     );
@@ -1144,8 +1231,6 @@
       "pcf-close"
     ).onclick =
       () => {
-        hideCourseTooltip();
-
         panel.classList.add(
           "pcf-hidden"
         );
@@ -1167,6 +1252,8 @@
       async event => {
         state.enabled =
           event.target.checked;
+
+        loadMoreAttempts = 0;
 
         await saveState();
 
@@ -1213,7 +1300,6 @@
       "pcf-search"
     ).oninput =
       () => {
-        hideCourseTooltip();
         updatePanel();
       };
 
@@ -1269,6 +1355,8 @@
           }
         });
 
+        loadMoreAttempts = 0;
+
         await saveState();
 
         applyFilter();
@@ -1283,6 +1371,8 @@
     ).onclick =
       async () => {
         state.selected = [];
+
+        loadMoreAttempts = 0;
 
         await saveState();
 
@@ -1338,6 +1428,8 @@
               entry.key
             );
 
+        loadMoreAttempts = 0;
+
         await saveState();
 
         applyFilter();
@@ -1353,6 +1445,8 @@
       async () => {
         state.selected =
           [...state.currentClasses];
+
+        loadMoreAttempts = 0;
 
         await saveState();
 
@@ -1420,6 +1514,8 @@
 
         try {
           state.entries = [];
+
+          loadMoreAttempts = 0;
 
           await saveState();
 
@@ -1499,6 +1595,8 @@
       () => {
         discoverEntries();
 
+        loadMoreAttempts = 0;
+
         void saveState();
 
         applyFilter();
@@ -1517,8 +1615,6 @@
     if (destroyed) {
       return;
     }
-
-    hideCourseTooltip();
 
     const panel =
       document.getElementById(
@@ -1729,6 +1825,8 @@
               });
             }
 
+            loadMoreAttempts = 0;
+
             await saveState();
 
             applyFilter();
@@ -1801,6 +1899,8 @@
                   );
               }
 
+              loadMoreAttempts = 0;
+
               await saveState();
 
               applyFilter();
@@ -1822,40 +1922,24 @@
           displayName.className =
             "pcf-course-display-name";
 
-          const tooltipText =
+          displayName.textContent =
             getDisplayName(entry);
 
-          displayName.textContent =
-            tooltipText;
-
           /*
-           * Custom tooltip events.
+           * Native browser tooltip.
+           *
+           * This gives the full class name when the visible
+           * name is shortened with CSS ellipsis.
            */
-
-          displayName.addEventListener(
-            "mouseenter",
-            () => {
-              showCourseTooltip(
-                displayName,
-                tooltipText
-              );
-            }
-          );
-
-          displayName.addEventListener(
-            "mouseleave",
-            () => {
-              hideCourseTooltip();
-            }
-          );
+          displayName.title =
+            getDisplayName(entry);
 
           nameContainer.appendChild(
             displayName
           );
 
           /*
-           * Show the real course code
-           * if renamed.
+           * Show the real course code if renamed.
            */
 
           if (
@@ -2238,28 +2322,6 @@
       "scroll",
       () => {
         handleDynamicContent();
-
-        const tooltip =
-          document.getElementById(
-            "pcf-tooltip"
-          );
-
-        const activeCourse =
-          document.querySelector(
-            ".pcf-course-display-name:hover"
-          );
-
-        if (
-          tooltip &&
-          activeCourse &&
-          tooltip.style.display !==
-            "none"
-        ) {
-          positionCourseTooltip(
-            activeCourse,
-            tooltip
-          );
-        }
       },
       {
         passive: true
