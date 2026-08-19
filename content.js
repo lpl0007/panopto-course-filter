@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "panoptoCourseFilterV11";
+  const STORAGE_KEY = "panoptoCourseFilterV12";
 
   const state = {
     entries: [],
@@ -11,10 +11,11 @@
     collapsedSemesters: {}
   };
 
-  let destroyed = false;
   let scanTimer = null;
-  let reloadInProgress = false;
+  let panelUpdateTimer = null;
+  let destroyed = false;
   let observer = null;
+  let reloadingVideos = false;
 
   /*
    * =========================================================
@@ -129,9 +130,7 @@
         return termDifference;
       }
 
-      return a.course.localeCompare(
-        b.course
-      );
+      return a.course.localeCompare(b.course);
     });
   }
 
@@ -141,22 +140,23 @@
    * =========================================================
    */
 
-  function extensionContextIsValid() {
+  function contextValid() {
     try {
       return Boolean(
         chrome &&
         chrome.runtime &&
         chrome.runtime.id
       );
-    } catch (error) {
+    } catch {
       return false;
     }
   }
 
   async function loadState() {
     try {
-      if (!extensionContextIsValid()) {
-        return false;
+      if (!contextValid()) {
+        destroyed = true;
+        return;
       }
 
       const result =
@@ -164,8 +164,9 @@
           STORAGE_KEY
         );
 
-      if (!extensionContextIsValid()) {
-        return false;
+      if (!contextValid()) {
+        destroyed = true;
+        return;
       }
 
       if (result[STORAGE_KEY]) {
@@ -198,8 +199,6 @@
           ? state.enabled
           : true;
 
-      return true;
-
     } catch (error) {
       if (
         String(error).includes(
@@ -207,20 +206,13 @@
         )
       ) {
         destroyed = true;
-
-        console.warn(
-          "Panopto Course Filter: extension was reloaded. Refresh the Panopto page."
-        );
-
-        return false;
+        return;
       }
 
       console.error(
         "Panopto Course Filter: loadState failed.",
         error
       );
-
-      return false;
     }
   }
 
@@ -228,24 +220,21 @@
     try {
       if (
         destroyed ||
-        !extensionContextIsValid()
+        !contextValid()
       ) {
-        return false;
+        return;
       }
 
       await chrome.storage.local.set({
         [STORAGE_KEY]: {
           entries: state.entries,
           selected: state.selected,
-          currentClasses:
-            state.currentClasses,
+          currentClasses: state.currentClasses,
           enabled: state.enabled,
           collapsedSemesters:
             state.collapsedSemesters
         }
       });
-
-      return true;
 
     } catch (error) {
       if (
@@ -254,20 +243,13 @@
         )
       ) {
         destroyed = true;
-
-        console.warn(
-          "Panopto Course Filter: extension was reloaded. Refresh the Panopto page."
-        );
-
-        return false;
+        return;
       }
 
       console.error(
         "Panopto Course Filter: saveState failed.",
         error
       );
-
-      return false;
     }
   }
 
@@ -278,8 +260,7 @@
    */
 
   function discoverEntries({
-    replace = false,
-    save = false
+    replace = false
   } = {}) {
     const found = new Map();
 
@@ -288,6 +269,16 @@
         "a, span, p, [role='treeitem'], [class*='card'], [class*='Card']"
       )
       .forEach(element => {
+        /*
+         * Never scan our own panel.
+         */
+        if (
+          element.closest &&
+          element.closest("#pcf-panel")
+        ) {
+          return;
+        }
+
         const text = normalize(
           element.innerText ||
           element.textContent
@@ -314,41 +305,37 @@
         sortEntries(
           [...found.values()]
         );
-    } else {
-      const merged = new Map();
 
-      state.entries.forEach(entry => {
-        if (
-          entry &&
-          entry.key
-        ) {
-          merged.set(
-            entry.key,
-            entry
-          );
-        }
-      });
+      return;
+    }
 
-      found.forEach(
-        (entry, key) => {
-          merged.set(
-            key,
-            entry
-          );
-        }
-      );
+    const merged = new Map();
 
-      state.entries =
-        sortEntries(
-          [...merged.values()]
+    state.entries.forEach(entry => {
+      if (
+        entry &&
+        entry.key
+      ) {
+        merged.set(
+          entry.key,
+          entry
         );
-    }
+      }
+    });
 
-    if (save) {
-      void saveState();
-    }
+    found.forEach(
+      (entry, key) => {
+        merged.set(
+          key,
+          entry
+        );
+      }
+    );
 
-    return found.size;
+    state.entries =
+      sortEntries(
+        [...merged.values()]
+      );
   }
 
   /*
@@ -363,14 +350,21 @@
     document
       .querySelectorAll("a[href]")
       .forEach(link => {
+        /*
+         * Never treat extension UI as a recording.
+         */
+        if (
+          link.closest &&
+          link.closest("#pcf-panel")
+        ) {
+          return;
+        }
+
         const href =
-          link.getAttribute("href") ||
-          "";
+          link.getAttribute("href") || "";
 
         if (
-          !/viewer|session/i.test(
-            href
-          )
+          !/viewer|session/i.test(href)
         ) {
           return;
         }
@@ -382,6 +376,16 @@
           i < 10 && parent;
           i++
         ) {
+          if (
+            parent.id === "pcf-panel" ||
+            (
+              parent.closest &&
+              parent.closest("#pcf-panel")
+            )
+          ) {
+            break;
+          }
+
           const text = normalize(
             parent.innerText ||
             parent.textContent
@@ -434,12 +438,14 @@
       return true;
     }
 
-    return getCardEntries(card)
-      .some(entry =>
-        state.selected.includes(
-          entry.key
-        )
-      );
+    const entries =
+      getCardEntries(card);
+
+    return entries.some(entry =>
+      state.selected.includes(
+        entry.key
+      )
+    );
   }
 
   /*
@@ -448,15 +454,11 @@
    * =========================================================
    */
 
-  function clearCardFiltering() {
+  function showAllCards() {
     findRecordingCards()
       .forEach(card => {
         card.classList.remove(
           "pcf-filtered-out"
-        );
-
-        card.style.removeProperty(
-          "display"
         );
 
         card.style.removeProperty(
@@ -484,9 +486,6 @@
     let matchingCount = 0;
 
     cards.forEach(card => {
-      /*
-       * No filter means everything stays visible.
-       */
       if (
         !state.enabled ||
         state.selected.length === 0
@@ -512,9 +511,6 @@
         return;
       }
 
-      /*
-       * Selected class -> visible.
-       */
       if (
         cardMatchesSelection(card)
       ) {
@@ -536,32 +532,56 @@
 
         matchingCount++;
 
-        return;
+      } else {
+        /*
+         * IMPORTANT:
+         *
+         * Do not use display:none.
+         * The card remains in the layout so Panopto's
+         * lazy loader can continue loading recordings.
+         */
+        card.classList.add(
+          "pcf-filtered-out"
+        );
+
+        card.style.visibility =
+          "hidden";
+
+        card.style.opacity =
+          "0";
+
+        card.style.pointerEvents =
+          "none";
       }
-
-      /*
-       * Unselected class -> hidden, but NOT display:none.
-       *
-       * Keeping the card in the layout helps Panopto's
-       * lazy-loading mechanism continue working.
-       */
-      card.classList.add(
-        "pcf-filtered-out"
-      );
-
-      card.style.visibility =
-        "hidden";
-
-      card.style.opacity =
-        "0";
-
-      card.style.pointerEvents =
-        "none";
     });
 
-    updatePanel(
+    schedulePanelUpdate(
       matchingCount
     );
+  }
+
+  /*
+   * =========================================================
+   * PANEL UPDATE DEBOUNCING
+   *
+   * This prevents the MutationObserver from rebuilding the
+   * panel while a checkbox is being clicked.
+   * =========================================================
+   */
+
+  function schedulePanelUpdate(
+    matchingCount = null
+  ) {
+    clearTimeout(
+      panelUpdateTimer
+    );
+
+    panelUpdateTimer =
+      setTimeout(() => {
+        updatePanel(
+          matchingCount
+        );
+      }, 50);
   }
 
   /*
@@ -609,28 +629,17 @@
    * =========================================================
    * MANUAL VIDEO RELOAD
    * =========================================================
-   *
-   * A real page reload lets Panopto rebuild its own recording
-   * list normally.
-   *
-   * The selected classes are saved first.
-   *
-   * On the newly loaded page, init() installs the Mutation-
-   * Observer BEFORE Panopto finishes adding all recordings.
-   *
-   * Every newly-added batch is then filtered.
-   * =========================================================
    */
 
   async function reloadVideos() {
     if (
-      reloadInProgress ||
-      destroyed
+      destroyed ||
+      reloadingVideos
     ) {
       return;
     }
 
-    reloadInProgress = true;
+    reloadingVideos = true;
 
     const button =
       document.getElementById(
@@ -643,50 +652,37 @@
         "↻ Reloading...";
     }
 
-    try {
-      await saveState();
+    /*
+     * Save selections before the actual page reload.
+     */
+    await saveState();
 
-      /*
-       * Give Chrome storage time to commit.
-       */
-      await new Promise(resolve => {
-        setTimeout(
-          resolve,
-          200
-        );
-      });
+    /*
+     * Short delay to ensure storage is committed.
+     */
+    await new Promise(resolve =>
+      setTimeout(resolve, 250)
+    );
 
-      /*
-       * Reload the actual Panopto page.
-       */
-      window.location.reload();
-
-    } catch (error) {
-      console.error(
-        "Panopto Course Filter: video reload failed.",
-        error
-      );
-
-      reloadInProgress = false;
-
-      if (button) {
-        button.disabled = false;
-        button.textContent =
-          "↻ Reload Videos";
-      }
-    }
+    /*
+     * Reload the actual Panopto page.
+     */
+    window.location.reload();
   }
 
   /*
    * =========================================================
-   * FILTER NEWLY ADDED CARDS
+   * DYNAMIC PANOPTO CONTENT
    * =========================================================
    *
-   * This is the important part for the reload problem.
+   * CRITICAL:
    *
-   * Panopto frequently adds recordings AFTER our initial
-   * page load. MutationObserver catches those additions and
-   * immediately calls applyFilter().
+   * We do NOT call updatePanel() here.
+   *
+   * We only reapply the filter.
+   *
+   * This means Panopto can add recordings without our
+   * extension rebuilding the checkbox panel.
    * =========================================================
    */
 
@@ -706,21 +702,18 @@
         }
 
         /*
-         * Remember any newly discovered courses.
+         * Remember newly discovered classes.
          */
-        discoverEntries({
-          save: true
-        });
+        discoverEntries();
+
+        void saveState();
 
         /*
-         * MOST IMPORTANT:
-         *
-         * Re-run the filter against all recording cards,
-         * including cards Panopto just created.
+         * Filter newly added recordings.
          */
         applyFilter();
 
-      }, 80);
+      }, 100);
   }
 
   /*
@@ -839,7 +832,7 @@
       };
 
     /*
-     * ENABLE/DISABLE
+     * ENABLE
      */
 
     const enabled =
@@ -858,9 +851,9 @@
         await saveState();
 
         if (!state.enabled) {
-          clearCardFiltering();
+          showAllCards();
 
-          updatePanel(
+          schedulePanelUpdate(
             findRecordingCards().length
           );
 
@@ -894,9 +887,9 @@
         await saveState();
 
         /*
-         * Immediately show all loaded recordings.
+         * Immediately reveal all loaded recordings.
          */
-        clearCardFiltering();
+        showAllCards();
 
         updatePanel(
           findRecordingCards().length
@@ -932,7 +925,7 @@
       };
 
     /*
-     * USE SAVED CURRENT
+     * USE CURRENT
      */
 
     document.getElementById(
@@ -964,7 +957,7 @@
       };
 
     /*
-     * CLEAR SAVED CURRENT
+     * CLEAR SAVED
      */
 
     document.getElementById(
@@ -985,8 +978,8 @@
     document.getElementById(
       "pcf-reload-videos"
     ).onclick =
-      async () => {
-        await reloadVideos();
+      () => {
+        void reloadVideos();
       };
 
     /*
@@ -1007,26 +1000,15 @@
           "↻ Rediscovering...";
 
         try {
-          /*
-           * Forget discovered classes.
-           */
           state.entries = [];
 
-          /*
-           * Keep selected/current classes.
-           *
-           * They are not automatically deleted just because
-           * the discovery list was wiped.
-           */
           await saveState();
 
-          /*
-           * Rediscover from the current page.
-           */
           discoverEntries({
-            replace: true,
-            save: true
+            replace: true
           });
+
+          await saveState();
 
           updatePanel();
 
@@ -1045,9 +1027,9 @@
       "pcf-refresh"
     ).onclick =
       () => {
-        discoverEntries({
-          save: true
-        });
+        discoverEntries();
+
+        void saveState();
 
         applyFilter();
       };
@@ -1062,12 +1044,24 @@
   function updatePanel(
     matchingCount = null
   ) {
+    if (destroyed) {
+      return;
+    }
+
+    const panel =
+      document.getElementById(
+        "pcf-panel"
+      );
+
     const list =
       document.getElementById(
         "pcf-course-list"
       );
 
-    if (!list) {
+    if (
+      !panel ||
+      !list
+    ) {
       return;
     }
 
@@ -1082,6 +1076,15 @@
           ? searchElement.value
           : ""
       ).toUpperCase();
+
+    /*
+     * IMPORTANT:
+     *
+     * We only rebuild the course list when explicitly
+     * requested by the UI.
+     *
+     * The MutationObserver never directly calls this.
+     */
 
     list.innerHTML = "";
 
@@ -1163,7 +1166,7 @@
         }
 
         /*
-         * Collapse
+         * COLLAPSE
          */
 
         header
@@ -1182,13 +1185,11 @@
 
             await saveState();
 
-            updatePanel(
-              matchingCount
-            );
+            updatePanel();
           };
 
         /*
-         * Select all
+         * SELECT ALL
          */
 
         header
@@ -1215,9 +1216,7 @@
               state.selected =
                 state.selected.filter(
                   key =>
-                    !keys.includes(
-                      key
-                    )
+                    !keys.includes(key)
                 );
             } else {
               keys.forEach(key => {
@@ -1239,7 +1238,7 @@
           };
 
         /*
-         * Individual courses
+         * INDIVIDUAL COURSE
          */
 
         entries.forEach(entry => {
@@ -1276,6 +1275,9 @@
 
           checkbox.onchange =
             async () => {
+              /*
+               * Update state FIRST.
+               */
               if (
                 checkbox.checked
               ) {
@@ -1297,11 +1299,15 @@
                   );
               }
 
+              /*
+               * Save selection.
+               */
               await saveState();
 
               /*
-               * Apply immediately to all currently loaded
-               * recordings.
+               * Filter the videos.
+               *
+               * DO NOT rebuild the panel here.
                */
               applyFilter();
             };
@@ -1349,7 +1355,7 @@
     );
 
     /*
-     * Recording count
+     * COUNT
      */
 
     if (
@@ -1367,9 +1373,7 @@
       } else {
         matchingCount =
           cards.filter(card =>
-            cardMatchesSelection(
-              card
-            )
+            cardMatchesSelection(card)
           ).length;
       }
     }
@@ -1468,16 +1472,9 @@
    */
 
   async function init() {
-    /*
-     * Load saved selections BEFORE creating the observer.
-     */
-    const loaded =
-      await loadState();
+    await loadState();
 
-    if (
-      !loaded &&
-      destroyed
-    ) {
+    if (destroyed) {
       return;
     }
 
@@ -1485,17 +1482,19 @@
     createLauncher();
 
     /*
-     * IMPORTANT:
+     * Install observer BEFORE discovery/filtering.
      *
-     * Start observing BEFORE doing our first scan.
-     *
-     * Panopto can continue adding recordings for a while
-     * after document_idle.
+     * Most importantly, the observer completely ignores
+     * anything inside #pcf-panel.
      */
     observer =
       new MutationObserver(
         mutations => {
-          let relevant = false;
+          if (destroyed) {
+            return;
+          }
+
+          let panoptoChanged = false;
 
           for (
             const mutation of mutations
@@ -1507,50 +1506,82 @@
               continue;
             }
 
+            /*
+             * Ignore mutations that belong to our panel.
+             */
+            const target =
+              mutation.target;
+
             if (
-              mutation.addedNodes &&
-              mutation.addedNodes.length
+              target &&
+              target.closest &&
+              target.closest("#pcf-panel")
             ) {
-              relevant = true;
+              continue;
+            }
+
+            for (
+              const node of mutation.addedNodes
+            ) {
+              if (
+                node.nodeType !==
+                Node.ELEMENT_NODE
+              ) {
+                continue;
+              }
+
+              /*
+               * Ignore our own UI if it somehow appears
+               * in an added subtree.
+               */
+              if (
+                node.id ===
+                "pcf-panel" ||
+                (
+                  node.closest &&
+                  node.closest("#pcf-panel")
+                )
+              ) {
+                continue;
+              }
+
+              panoptoChanged = true;
+              break;
+            }
+
+            if (panoptoChanged) {
               break;
             }
           }
 
-          if (relevant) {
+          if (panoptoChanged) {
             handleDynamicContent();
           }
         }
       );
 
-    try {
-      observer.observe(
-        document.body,
-        {
-          childList: true,
-          subtree: true
-        }
-      );
-    } catch (error) {
-      console.warn(
-        "Panopto Course Filter: MutationObserver failed.",
-        error
-      );
-    }
+    observer.observe(
+      document.body,
+      {
+        childList: true,
+        subtree: true
+      }
+    );
 
     /*
-     * Initial discovery.
+     * Initial course discovery.
      */
-    discoverEntries({
-      save: true
-    });
+    discoverEntries();
+
+    await saveState();
 
     /*
-     * Initial filter.
+     * Initial video filtering.
      */
     applyFilter();
 
     /*
-     * Keep discovering courses as the user scrolls.
+     * Scroll handling.
      */
     window.addEventListener(
       "scroll",
@@ -1566,47 +1597,36 @@
      * =======================================================
      * POST-LOAD FILTERING
      *
-     * Panopto can populate the recording list well after
-     * document_idle.
-     *
-     * Run repeated filters for the first 15 seconds so that
-     * videos arriving after a reload cannot bypass the filter.
+     * Panopto may add videos for several seconds after the
+     * page is loaded.
      * =======================================================
      */
 
     let attempts = 0;
 
-    const postLoadTimer =
+    const timer =
       setInterval(() => {
-        if (
-          destroyed
-        ) {
-          clearInterval(
-            postLoadTimer
-          );
-
+        if (destroyed) {
+          clearInterval(timer);
           return;
         }
 
         attempts++;
 
-        discoverEntries({
-          save: true
-        });
+        discoverEntries();
 
         applyFilter();
 
-        if (
-          attempts >= 30
-        ) {
-          clearInterval(
-            postLoadTimer
-          );
+        /*
+         * 30 × 500ms = 15 seconds.
+         */
+        if (attempts >= 30) {
+          clearInterval(timer);
         }
       }, 500);
 
     /*
-     * Also filter when the complete page load event fires.
+     * Full page load.
      */
     window.addEventListener(
       "load",
@@ -1616,12 +1636,10 @@
         }
 
         setTimeout(() => {
-          discoverEntries({
-            save: true
-          });
+          discoverEntries();
 
           applyFilter();
-        }, 300);
+        }, 500);
       },
       {
         once: true
@@ -1648,14 +1666,14 @@
         )
       ) {
         console.warn(
-          "Panopto Course Filter: extension context was invalidated. Refresh the Panopto page."
+          "Panopto Course Filter: extension context invalidated. Refresh the Panopto page."
         );
 
         return;
       }
 
       console.error(
-        "Panopto Course Filter initialization failed.",
+        "Panopto Course Filter failed to initialize.",
         error
       );
     });
