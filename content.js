@@ -23,18 +23,6 @@
    * =========================================================
    * COURSE PARSING
    * =========================================================
-   *
-   * Supported:
-   *
-   * Fall 2026-COMP-6710-D01
-   * Spring 2026-COMP-4300-001
-   * Summer 2026-BUAL-2650-002
-   *
-   * And:
-   *
-   * COMP-4300-001 (Spring 2026)
-   *
-   * Winter is intentionally NOT supported.
    */
 
   const FORWARD_RE =
@@ -880,6 +868,122 @@
 
   /*
    * =========================================================
+   * TOOLTIP
+   * =========================================================
+   */
+
+  function positionCourseTooltip(
+    element,
+    tooltip
+  ) {
+    if (!element || !tooltip) {
+      return;
+    }
+
+    const rect =
+      element.getBoundingClientRect();
+
+    /*
+     * Make visible temporarily so
+     * getBoundingClientRect() has
+     * the correct dimensions.
+     */
+
+    const tooltipRect =
+      tooltip.getBoundingClientRect();
+
+    const margin = 8;
+
+    let left =
+      rect.left;
+
+    let top =
+      rect.bottom + margin;
+
+    /*
+     * Keep horizontally inside
+     * the browser window.
+     */
+
+    if (
+      left + tooltipRect.width >
+      window.innerWidth - margin
+    ) {
+      left =
+        window.innerWidth -
+        tooltipRect.width -
+        margin;
+    }
+
+    if (left < margin) {
+      left = margin;
+    }
+
+    /*
+     * If there isn't room below,
+     * place it above.
+     */
+
+    if (
+      top + tooltipRect.height >
+      window.innerHeight - margin
+    ) {
+      top =
+        rect.top -
+        tooltipRect.height -
+        margin;
+    }
+
+    if (top < margin) {
+      top = margin;
+    }
+
+    tooltip.style.left =
+      `${left}px`;
+
+    tooltip.style.top =
+      `${top}px`;
+  }
+
+  function showCourseTooltip(
+    element,
+    text
+  ) {
+    const tooltip =
+      document.getElementById(
+        "pcf-tooltip"
+      );
+
+    if (!tooltip) {
+      return;
+    }
+
+    tooltip.textContent =
+      text;
+
+    tooltip.style.display =
+      "block";
+
+    positionCourseTooltip(
+      element,
+      tooltip
+    );
+  }
+
+  function hideCourseTooltip() {
+    const tooltip =
+      document.getElementById(
+        "pcf-tooltip"
+      );
+
+    if (tooltip) {
+      tooltip.style.display =
+        "none";
+    }
+  }
+
+  /*
+   * =========================================================
    * PANEL
    * =========================================================
    */
@@ -1008,6 +1112,26 @@
       </div>
     `;
 
+    /*
+     * Create tooltip OUTSIDE the
+     * scrollable course list.
+     */
+
+    const tooltip =
+      document.createElement(
+        "div"
+      );
+
+    tooltip.id =
+      "pcf-tooltip";
+
+    tooltip.style.display =
+      "none";
+
+    document.body.appendChild(
+      tooltip
+    );
+
     document.body.appendChild(
       panel
     );
@@ -1020,6 +1144,8 @@
       "pcf-close"
     ).onclick =
       () => {
+        hideCourseTooltip();
+
         panel.classList.add(
           "pcf-hidden"
         );
@@ -1087,6 +1213,7 @@
       "pcf-search"
     ).oninput =
       () => {
+        hideCourseTooltip();
         updatePanel();
       };
 
@@ -1300,10 +1427,6 @@
             replace: true
           });
 
-          /*
-           * Remove selections/custom names for courses
-           * that no longer exist.
-           */
           const validKeys =
             new Set(
               state.entries.map(
@@ -1394,6 +1517,8 @@
     if (destroyed) {
       return;
     }
+
+    hideCourseTooltip();
 
     const panel =
       document.getElementById(
@@ -1697,19 +1822,31 @@
           displayName.className =
             "pcf-course-display-name";
 
-          displayName.textContent =
+          const tooltipText =
             getDisplayName(entry);
 
+          displayName.textContent =
+            tooltipText;
+
           /*
-           * TOOLTIP
-           *
-           * Store the complete displayed course name
-           * so CSS can show it when the user hovers
-           * over a truncated name.
+           * Custom tooltip events.
            */
-          displayName.setAttribute(
-            "data-tooltip",
-            getDisplayName(entry)
+
+          displayName.addEventListener(
+            "mouseenter",
+            () => {
+              showCourseTooltip(
+                displayName,
+                tooltipText
+              );
+            }
+          );
+
+          displayName.addEventListener(
+            "mouseleave",
+            () => {
+              hideCourseTooltip();
+            }
           );
 
           nameContainer.appendChild(
@@ -1717,8 +1854,10 @@
           );
 
           /*
-           * Show the real course code if renamed.
+           * Show the real course code
+           * if renamed.
            */
+
           if (
             state.customNames[
               entry.key
@@ -2099,6 +2238,28 @@
       "scroll",
       () => {
         handleDynamicContent();
+
+        const tooltip =
+          document.getElementById(
+            "pcf-tooltip"
+          );
+
+        const activeCourse =
+          document.querySelector(
+            ".pcf-course-display-name:hover"
+          );
+
+        if (
+          tooltip &&
+          activeCourse &&
+          tooltip.style.display !==
+            "none"
+        ) {
+          positionCourseTooltip(
+            activeCourse,
+            tooltip
+          );
+        }
       },
       {
         passive: true
