@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "panoptoCourseFilterV7";
+  const STORAGE_KEY = "panoptoCourseFilterV8";
 
   const state = {
     entries: [],
@@ -12,8 +12,8 @@
   };
 
   let scanTimer = null;
-  let isScanning = false;
   let loadingMore = false;
+  let observer = null;
 
   /*
    * =========================================================
@@ -187,16 +187,14 @@
 
   /*
    * =========================================================
-   * COURSE DISCOVERY
+   * DISCOVERY
    * =========================================================
    */
 
-  function discoverEntries(options = {}) {
-    const {
-      replace = false,
-      save = false
-    } = options;
-
+  function discoverEntries({
+    replace = false,
+    save = false
+  } = {}) {
     const found = new Map();
 
     document
@@ -251,22 +249,11 @@
         );
     }
 
-    const knownKeys =
-      new Set(
-        state.entries.map(
-          entry => entry.key
-        )
-      );
-
-    state.selected =
-      state.selected.filter(key =>
-        knownKeys.has(key)
-      );
-
-    state.currentClasses =
-      state.currentClasses.filter(key =>
-        knownKeys.has(key)
-      );
+    /*
+     * Do NOT delete saved selections merely because a class
+     * isn't currently rendered. Remembered classes are exactly
+     * what we want to preserve across Panopto loads.
+     */
 
     if (save) {
       saveState();
@@ -277,7 +264,7 @@
 
   /*
    * =========================================================
-   * RECORDING CARD DETECTION
+   * RECORDING CARDS
    * =========================================================
    */
 
@@ -298,7 +285,7 @@
 
         for (
           let i = 0;
-          i < 8 && parent;
+          i < 10 && parent;
           i++
         ) {
           const text = normalize(
@@ -312,16 +299,16 @@
           if (
             rect.width > 150 &&
             rect.height > 100 &&
-            rect.height < 800 &&
+            rect.height < 900 &&
             text.length >= 15 &&
-            text.length < 1500
+            text.length < 2000
           ) {
             const links =
               parent.querySelectorAll(
                 "a[href]"
               );
 
-            if (links.length <= 4) {
+            if (links.length <= 5) {
               cards.add(parent);
               break;
             }
@@ -336,60 +323,69 @@
   }
 
   function getCardEntries(card) {
-    const text = normalize(
-      card.innerText ||
-      card.textContent
-    );
-
-    return parseEntries(text);
-  }
-
-  function cardMatchesSelection(card) {
-    if (state.selected.length === 0) {
-      return true;
-    }
-
-    const entries =
-      getCardEntries(card);
-
-    return entries.some(entry =>
-      state.selected.includes(
-        entry.key
+    return parseEntries(
+      normalize(
+        card.innerText ||
+        card.textContent
       )
     );
   }
 
-  /*
-   * =========================================================
-   * FILTERING
-   * =========================================================
-   *
-   * We NEVER hide cards while Panopto is trying to lazy-load.
-   *
-   * When a selection changes:
-   *
-   *   1. Show all cards.
-   *   2. Let Panopto load more.
-   *   3. Discover new cards/classes.
-   *   4. Apply the filter.
-   *
-   * This prevents the white-space problem while preserving
-   * Panopto's lazy-loading behavior.
-   */
+  function cardMatchesSelection(card) {
+    if (
+      state.selected.length === 0
+    ) {
+      return true;
+    }
 
-  function showAllRecordingCards() {
-    findRecordingCards().forEach(card => {
-      card.classList.remove(
-        "pcf-filtered-out"
+    return getCardEntries(card)
+      .some(entry =>
+        state.selected.includes(
+          entry.key
+        )
       );
-    });
   }
 
-  function applyFinalFilter() {
+  /*
+   * =========================================================
+   * FILTER
+   * =========================================================
+   */
+
+  function showEverything() {
+    findRecordingCards()
+      .forEach(card => {
+        card.classList.remove(
+          "pcf-filtered-out"
+        );
+
+        /*
+         * Also clean up any styles from older versions
+         * of the extension.
+         */
+        card.style.removeProperty(
+          "display"
+        );
+
+        card.style.removeProperty(
+          "visibility"
+        );
+
+        card.style.removeProperty(
+          "opacity"
+        );
+
+        card.style.removeProperty(
+          "pointer-events"
+        );
+      });
+  }
+
+  function applyFilter() {
     const cards =
       findRecordingCards();
 
-    let visibleCount = 0;
+    let matching = 0;
 
     cards.forEach(card => {
       if (
@@ -400,19 +396,18 @@
           "pcf-filtered-out"
         );
 
-        visibleCount++;
+        matching++;
         return;
       }
 
-      const matches =
-        cardMatchesSelection(card);
-
-      if (matches) {
+      if (
+        cardMatchesSelection(card)
+      ) {
         card.classList.remove(
           "pcf-filtered-out"
         );
 
-        visibleCount++;
+        matching++;
       } else {
         card.classList.add(
           "pcf-filtered-out"
@@ -420,136 +415,406 @@
       }
     });
 
-    updatePanel(visibleCount);
+    updatePanel(matching);
   }
 
   /*
    * =========================================================
-   * LAZY LOADING
+   * FIND PANOPTO'S REAL SCROLL CONTAINER
    * =========================================================
    */
 
-  function getScrollableContainers() {
-    const containers = new Set();
+  function getScrollContainers() {
+    const result = [];
+    const seen = new Set();
 
+    function add(element) {
+      if (!element) {
+        return;
+      }
+
+      if (seen.has(element)) {
+        return;
+      }
+
+      seen.add(element);
+      result.push(element);
+    }
+
+    /*
+     * First inspect ancestors of recording cards.
+     */
     const cards =
       findRecordingCards();
 
-    cards
-      .slice(0, 20)
+    cards.slice(0, 50)
       .forEach(card => {
-        let element =
+        let el =
           card.parentElement;
 
         while (
-          element &&
-          element !== document.body &&
-          element !== document.documentElement
+          el &&
+          el !== document.body &&
+          el !== document.documentElement
         ) {
           const style =
-            window.getComputedStyle(
-              element
-            );
+            getComputedStyle(el);
+
+          const overflow =
+            style.overflowY;
 
           const scrollable =
-            /(auto|scroll)/i.test(
-              style.overflowY
+            (
+              overflow === "auto" ||
+              overflow === "scroll" ||
+              overflow === "overlay"
             ) &&
-            element.scrollHeight >
-              element.clientHeight + 20;
+            el.scrollHeight >
+              el.clientHeight + 30;
 
           if (scrollable) {
-            containers.add(element);
+            add(el);
           }
 
-          element =
-            element.parentElement;
+          el =
+            el.parentElement;
         }
       });
 
-    return [...containers];
-  }
+    /*
+     * Then inspect the whole document for scrollable elements.
+     *
+     * Panopto sometimes changes which element owns the
+     * scrolling after navigating between pages.
+     */
+    document
+      .querySelectorAll("*")
+      .forEach(el => {
+        if (
+          result.length >= 8
+        ) {
+          return;
+        }
 
-  function triggerPanoptoScroll() {
-    const containers =
-      getScrollableContainers();
+        const style =
+          getComputedStyle(el);
+
+        const overflow =
+          style.overflowY;
+
+        if (
+          overflow !== "auto" &&
+          overflow !== "scroll" &&
+          overflow !== "overlay"
+        ) {
+          return;
+        }
+
+        if (
+          el.scrollHeight >
+          el.clientHeight + 300
+        ) {
+          add(el);
+        }
+      });
 
     /*
-     * Internal scroll containers.
+     * Always include window/document.
      */
-    containers.forEach(container => {
-      try {
+    add(document.scrollingElement);
+
+    return result;
+  }
+
+  /*
+   * =========================================================
+   * MUTATION WAIT
+   * =========================================================
+   */
+
+  function waitForDOMChange(
+    oldSignature,
+    timeout = 1000
+  ) {
+    return new Promise(resolve => {
+      let finished = false;
+
+      const finish = changed => {
+        if (finished) {
+          return;
+        }
+
+        finished = true;
+
+        if (localObserver) {
+          localObserver.disconnect();
+        }
+
+        resolve(changed);
+      };
+
+      const localObserver =
+        new MutationObserver(() => {
+          finish(true);
+        });
+
+      localObserver.observe(
+        document.body,
+        {
+          childList: true,
+          subtree: true
+        }
+      );
+
+      setTimeout(() => {
+        const newSignature =
+          getPageSignature();
+
+        finish(
+          newSignature !==
+          oldSignature
+        );
+      }, timeout);
+    });
+  }
+
+  function getPageSignature() {
+    const cards =
+      findRecordingCards();
+
+    /*
+     * A signature based on card count + text allows us to
+     * detect both newly-created cards and cards whose content
+     * has changed.
+     */
+    let signature =
+      `${cards.length}|`;
+
+    cards.slice(-10)
+      .forEach(card => {
+        signature +=
+          normalize(
+            card.innerText ||
+            card.textContent
+          ).slice(0, 100) +
+          "|";
+      });
+
+    return signature;
+  }
+
+  /*
+   * =========================================================
+   * GRADUAL SCROLLING
+   * =========================================================
+   *
+   * This is the important part.
+   *
+   * Do NOT jump straight to scrollHeight.
+   *
+   * Panopto's lazy loader may use IntersectionObserver and
+   * expects its sentinel to actually travel through the
+   * viewport.
+   * =========================================================
+   */
+
+  async function graduallyScrollContainer(
+    container
+  ) {
+    const isDocument =
+      container ===
+      document.scrollingElement;
+
+    let oldSignature =
+      getPageSignature();
+
+    let stableAtBottom = 0;
+
+    const MAX_STEPS = 80;
+    const STEP = 550;
+
+    for (
+      let step = 0;
+      step < MAX_STEPS;
+      step++
+    ) {
+      const beforeHeight =
+        isDocument
+          ? Math.max(
+              document.body.scrollHeight,
+              document.documentElement.scrollHeight
+            )
+          : container.scrollHeight;
+
+      const beforePosition =
+        isDocument
+          ? window.scrollY
+          : container.scrollTop;
+
+      const maxScroll =
+        Math.max(
+          0,
+          beforeHeight -
+            (
+              isDocument
+                ? window.innerHeight
+                : container.clientHeight
+            )
+        );
+
+      const nextPosition =
+        Math.min(
+          maxScroll,
+          beforePosition + STEP
+        );
+
+      if (
+        nextPosition <=
+        beforePosition + 2
+      ) {
+        stableAtBottom++;
+
+        if (
+          stableAtBottom >= 3
+        ) {
+          break;
+        }
+
+        await new Promise(resolve =>
+          setTimeout(resolve, 250)
+        );
+
+        continue;
+      }
+
+      stableAtBottom = 0;
+
+      if (isDocument) {
+        window.scrollTo(
+          0,
+          nextPosition
+        );
+
+        /*
+         * Panopto/listeners may be listening specifically
+         * for scroll events.
+         */
+        window.dispatchEvent(
+          new Event("scroll", {
+            bubbles: false
+          })
+        );
+      } else {
         container.scrollTop =
-          container.scrollHeight;
+          nextPosition;
 
         container.dispatchEvent(
           new Event("scroll", {
             bubbles: true
           })
         );
-      } catch (_) {}
-    });
+      }
 
-    /*
-     * Window/document scrolling.
-     */
-    try {
-      const height =
-        Math.max(
-          document.body.scrollHeight,
-          document.documentElement.scrollHeight
-        );
-
-      window.scrollTo({
-        top: height,
-        behavior: "instant"
-      });
-
-      window.dispatchEvent(
-        new Event("scroll")
+      /*
+       * Give IntersectionObserver and Panopto's React code
+       * time to process the new viewport.
+       */
+      await new Promise(resolve =>
+        setTimeout(resolve, 180)
       );
-    } catch (_) {}
-  }
 
-  function waitForRecordingChange(
-    previousCount,
-    timeout = 1500
-  ) {
-    return new Promise(resolve => {
-      const started =
-        Date.now();
-
-      const check = () => {
-        const currentCount =
-          findRecordingCards().length;
-
-        if (
-          currentCount >
-          previousCount
-        ) {
-          resolve(true);
-          return;
-        }
-
-        if (
-          Date.now() - started >=
-          timeout
-        ) {
-          resolve(false);
-          return;
-        }
-
-        setTimeout(
-          check,
-          100
+      /*
+       * Wait briefly for a recording batch.
+       */
+      const changed =
+        await waitForDOMChange(
+          oldSignature,
+          550
         );
-      };
 
-      check();
-    });
+      const newSignature =
+        getPageSignature();
+
+      if (changed) {
+        oldSignature =
+          newSignature;
+
+        discoverEntries({
+          save: true
+        });
+      }
+
+      /*
+       * Recalculate because Panopto may have increased the
+       * scroll height while we were waiting.
+       */
+      const afterHeight =
+        isDocument
+          ? Math.max(
+              document.body.scrollHeight,
+              document.documentElement.scrollHeight
+            )
+          : container.scrollHeight;
+
+      const afterPosition =
+        isDocument
+          ? window.scrollY
+          : container.scrollTop;
+
+      if (
+        afterPosition >=
+        afterHeight -
+        (
+          isDocument
+            ? window.innerHeight
+            : container.clientHeight
+        ) -
+        10
+      ) {
+        /*
+         * We are at the current bottom. Panopto may still
+         * append another batch after a delay.
+         */
+        await new Promise(resolve =>
+          setTimeout(resolve, 500)
+        );
+
+        const newerHeight =
+          isDocument
+            ? Math.max(
+                document.body.scrollHeight,
+                document.documentElement.scrollHeight
+              )
+            : container.scrollHeight;
+
+        if (
+          newerHeight >
+          afterHeight + 20
+        ) {
+          oldSignature =
+            getPageSignature();
+
+          continue;
+        }
+
+        stableAtBottom++;
+
+        if (
+          stableAtBottom >= 3
+        ) {
+          break;
+        }
+      }
+    }
   }
 
-  async function loadMorePanoptoRecordings() {
+  /*
+   * =========================================================
+   * LOAD EVERYTHING PANOPTO WILL LOAD
+   * =========================================================
+   */
+
+  async function loadMoreRecordings() {
     if (loadingMore) {
       return;
     }
@@ -558,92 +823,106 @@
 
     try {
       /*
-       * VERY IMPORTANT:
+       * Absolutely critical:
        *
-       * Panopto gets its full normal layout back before
-       * we attempt to load anything.
+       * Remove our filtering before scrolling so Panopto sees
+       * its entire recording list and its lazy-load sentinel.
        */
-      showAllRecordingCards();
+      showEverything();
 
       await new Promise(resolve =>
-        requestAnimationFrame(resolve)
+        requestAnimationFrame(() => {
+          requestAnimationFrame(resolve);
+        })
       );
 
-      let previousCount =
-        findRecordingCards().length;
+      /*
+       * Discover what is already on screen.
+       */
+      discoverEntries({
+        save: true
+      });
 
       /*
-       * Several passes allow Panopto to load multiple
-       * batches instead of only one.
+       * Find likely scrolling elements.
        */
-      for (
-        let pass = 0;
-        pass < 8;
-        pass++
+      let containers =
+        getScrollContainers();
+
+      /*
+       * If we couldn't identify a special container, use
+       * document scrolling.
+       */
+      if (
+        containers.length === 0
       ) {
-        triggerPanoptoScroll();
-
-        await waitForRecordingChange(
-          previousCount,
-          1400
-        );
-
-        const currentCount =
-          findRecordingCards().length;
-
-        if (
-          currentCount >
-          previousCount
-        ) {
-          previousCount =
-            currentCount;
-
-          /*
-           * Newly added recordings can contain new
-           * course labels, so discover again.
-           */
-          discoverEntries({
-            save: true
-          });
-
-          continue;
-        }
-
-        /*
-         * Give Panopto one additional opportunity.
-         */
-        triggerPanoptoScroll();
-
-        await new Promise(resolve =>
-          setTimeout(resolve, 500)
-        );
-
-        const retryCount =
-          findRecordingCards().length;
-
-        if (
-          retryCount >
-          currentCount
-        ) {
-          previousCount =
-            retryCount;
-
-          discoverEntries({
-            save: true
-          });
-
-          continue;
-        }
-
-        /*
-         * No new recordings after two attempts.
-         * Stop.
-         */
-        break;
+        containers = [
+          document.scrollingElement
+        ];
       }
 
       /*
-       * Final course scan.
+       * Sort the containers so the largest scroll area is
+       * processed first.
+       */
+      containers.sort((a, b) => {
+        const ah =
+          a === document.scrollingElement
+            ? document.documentElement.scrollHeight
+            : a.scrollHeight;
+
+        const bh =
+          b === document.scrollingElement
+            ? document.documentElement.scrollHeight
+            : b.scrollHeight;
+
+        return bh - ah;
+      });
+
+      /*
+       * Process the most likely containers.
+       *
+       * Usually the first one is enough, but Panopto's layout
+       * can have nested scrolling regions.
+       */
+      for (
+        const container of containers.slice(
+          0,
+          3
+        )
+      ) {
+        await graduallyScrollContainer(
+          container
+        );
+
+        discoverEntries({
+          save: true
+        });
+      }
+
+      /*
+       * One final scroll-to-bottom event.
+       */
+      const scrollElement =
+        document.scrollingElement;
+
+      if (scrollElement) {
+        window.scrollTo(
+          0,
+          scrollElement.scrollHeight
+        );
+
+        window.dispatchEvent(
+          new Event("scroll")
+        );
+
+        await new Promise(resolve =>
+          setTimeout(resolve, 800)
+        );
+      }
+
+      /*
+       * Final discovery.
        */
       discoverEntries({
         save: true
@@ -654,40 +933,28 @@
     }
   }
 
-  async function refreshRecordingsAndFilter() {
+  /*
+   * =========================================================
+   * REFRESH AFTER SELECTION CHANGE
+   * =========================================================
+   */
+
+  async function refreshAfterSelectionChange() {
     /*
-     * If filtering is disabled or nothing is selected,
-     * immediately restore all cards.
+     * First make the whole Panopto list visible.
      */
-    if (
-      !state.enabled ||
-      state.selected.length === 0
-    ) {
-      showAllRecordingCards();
-
-      /*
-       * Still give Panopto a chance to load more.
-       */
-      await loadMorePanoptoRecordings();
-
-      applyFinalFilter();
-      return;
-    }
+    showEverything();
 
     /*
-     * Restore all cards before loading.
+     * Then actually exercise Panopto's lazy loader.
      */
-    showAllRecordingCards();
+    await loadMoreRecordings();
 
     /*
-     * Load more before applying the new filter.
+     * Only AFTER lazy loading is finished do we hide
+     * nonmatching cards.
      */
-    await loadMorePanoptoRecordings();
-
-    /*
-     * Now filter the complete set.
-     */
-    applyFinalFilter();
+    applyFilter();
   }
 
   /*
@@ -835,15 +1102,14 @@
 
     document.getElementById(
       "pcf-close"
-    ).onclick =
-      () => {
-        panel.classList.add(
-          "pcf-hidden"
-        );
-      };
+    ).onclick = () => {
+      panel.classList.add(
+        "pcf-hidden"
+      );
+    };
 
     /*
-     * ENABLE/DISABLE FILTER
+     * ENABLE
      */
 
     const enabled =
@@ -861,13 +1127,11 @@
 
         await saveState();
 
-        if (!state.enabled) {
-          showAllRecordingCards();
-          await loadMorePanoptoRecordings();
-          applyFinalFilter();
-        } else {
-          await refreshRecordingsAndFilter();
-        }
+        /*
+         * Even when disabling the filter, load the rest
+         * of Panopto's recordings.
+         */
+        await refreshAfterSelectionChange();
       };
 
     /*
@@ -876,10 +1140,9 @@
 
     document.getElementById(
       "pcf-search"
-    ).oninput =
-      () => {
-        updatePanel();
-      };
+    ).oninput = () => {
+      updatePanel();
+    };
 
     /*
      * NONE
@@ -894,10 +1157,12 @@
         await saveState();
 
         /*
-         * This restores ALL videos and allows Panopto
-         * to continue loading.
+         * This is deliberately NOT just "applyFilter".
+         *
+         * It restores every card and runs Panopto's lazy
+         * loader so additional videos appear.
          */
-        await refreshRecordingsAndFilter();
+        await refreshAfterSelectionChange();
       };
 
     /*
@@ -925,11 +1190,11 @@
 
         await saveState();
 
-        await refreshRecordingsAndFilter();
+        await refreshAfterSelectionChange();
       };
 
     /*
-     * USE SAVED CURRENT CLASSES
+     * USE SAVED
      */
 
     document.getElementById(
@@ -941,11 +1206,11 @@
 
         await saveState();
 
-        await refreshRecordingsAndFilter();
+        await refreshAfterSelectionChange();
       };
 
     /*
-     * SAVE CURRENT CLASSES
+     * SAVE CURRENT
      */
 
     document.getElementById(
@@ -961,7 +1226,7 @@
       };
 
     /*
-     * CLEAR CURRENT CLASSES
+     * CLEAR SAVED
      */
 
     document.getElementById(
@@ -993,19 +1258,7 @@
           "↻ Scanning...";
 
         try {
-          await loadMorePanoptoRecordings();
-
-          if (
-            state.enabled &&
-            state.selected.length > 0
-          ) {
-            applyFinalFilter();
-          } else {
-            showAllRecordingCards();
-            updatePanel(
-              findRecordingCards().length
-            );
-          }
+          await refreshAfterSelectionChange();
         } finally {
           button.disabled = false;
           button.textContent =
@@ -1014,7 +1267,7 @@
       };
 
     /*
-     * FORGET & REDISCOVER
+     * FORGET + REDISCOVER
      */
 
     document.getElementById(
@@ -1032,7 +1285,7 @@
 
         try {
           /*
-           * Completely erase remembered classes.
+           * Completely forget discovered courses.
            */
           state.entries = [];
           state.selected = [];
@@ -1042,12 +1295,12 @@
           await saveState();
 
           /*
-           * Show everything before rediscovery.
+           * Restore Panopto's full layout.
            */
-          showAllRecordingCards();
+          showEverything();
 
           /*
-           * Rediscover from the currently loaded page.
+           * Rediscover what's currently rendered.
            */
           discoverEntries({
             replace: true
@@ -1056,18 +1309,14 @@
           await saveState();
 
           /*
-           * Then allow Panopto to load more.
+           * Scroll through the page to force Panopto to
+           * discover additional recordings/classes.
            */
-          await loadMorePanoptoRecordings();
+          await loadMoreRecordings();
 
           updatePanel();
 
-          if (
-            state.enabled &&
-            state.selected.length > 0
-          ) {
-            applyFinalFilter();
-          }
+          applyFilter();
         } finally {
           button.disabled = false;
           button.textContent =
@@ -1133,19 +1382,18 @@
           );
         }
 
-        groups
-          .get(group)
+        groups.get(group)
           .push(entry);
       });
 
     groups.forEach(
       (entries, semester) => {
-        const semesterHeader =
+        const header =
           document.createElement(
             "div"
           );
 
-        semesterHeader.className =
+        header.className =
           "pcf-semester-header";
 
         const collapsed =
@@ -1154,14 +1402,9 @@
               semester
             ];
 
-        const arrow =
-          collapsed
-            ? "▶"
-            : "▼";
-
-        semesterHeader.innerHTML = `
+        header.innerHTML = `
           <button class="pcf-semester-toggle">
-            ${arrow}
+            ${collapsed ? "▶" : "▼"}
           </button>
 
           <strong>${semester}</strong>
@@ -1171,28 +1414,22 @@
           </button>
         `;
 
-        list.appendChild(
-          semesterHeader
-        );
+        list.appendChild(header);
 
-        const semesterCourses =
+        const courses =
           document.createElement(
             "div"
           );
 
-        semesterCourses.className =
+        courses.className =
           "pcf-semester-courses";
 
         if (collapsed) {
-          semesterCourses.style.display =
+          courses.style.display =
             "none";
         }
 
-        /*
-         * Collapse / expand
-         */
-
-        semesterHeader
+        header
           .querySelector(
             ".pcf-semester-toggle"
           )
@@ -1213,11 +1450,7 @@
             );
           };
 
-        /*
-         * Select all in semester
-         */
-
-        semesterHeader
+        header
           .querySelector(
             ".pcf-semester-all"
           )
@@ -1260,12 +1493,8 @@
 
             await saveState();
 
-            await refreshRecordingsAndFilter();
+            await refreshAfterSelectionChange();
           };
-
-        /*
-         * Individual courses
-         */
 
         entries.forEach(entry => {
           const label =
@@ -1325,12 +1554,13 @@
               await saveState();
 
               /*
-               * IMPORTANT:
+               * Crucial:
                *
-               * Restore the complete list, load more
-               * recordings, then apply the new selection.
+               * Selecting a SECOND class does not merely
+               * filter the videos already present. It forces
+               * Panopto's lazy loader to run again first.
                */
-              await refreshRecordingsAndFilter();
+              await refreshAfterSelectionChange();
             };
 
           label.append(
@@ -1364,13 +1594,13 @@
             );
           }
 
-          semesterCourses.appendChild(
+          courses.appendChild(
             label
           );
         });
 
         list.appendChild(
-          semesterCourses
+          courses
         );
       }
     );
@@ -1395,24 +1625,19 @@
             ).length;
     }
 
-    const selectedCount =
-      state.selected.length;
-
-    const currentCount =
-      state.currentClasses.length;
-
-    const discoveredCount =
-      state.entries.length;
-
     const countElement =
       document.getElementById(
         "pcf-count"
       );
 
+    if (!countElement) {
+      return;
+    }
+
     countElement.innerHTML = `
       <div>
         <strong>
-          ${selectedCount}
+          ${state.selected.length}
         </strong>
         selected ·
         <strong>
@@ -1422,14 +1647,14 @@
       </div>
 
       <div class="pcf-discovered-count">
-        ${discoveredCount} discovered
+        ${state.entries.length} discovered
       </div>
 
       ${
-        currentCount > 0
+        state.currentClasses.length
           ? `
             <div class="pcf-saved-count">
-              ⭐ ${currentCount}
+              ⭐ ${state.currentClasses.length}
               saved current
             </div>
           `
@@ -1464,18 +1689,17 @@
     button.textContent =
       "🎓 Courses";
 
-    button.onclick =
-      () => {
-        document
-          .getElementById(
-            "pcf-panel"
-          )
-          .classList.remove(
-            "pcf-hidden"
-          );
+    button.onclick = () => {
+      document
+        .getElementById(
+          "pcf-panel"
+        )
+        .classList.remove(
+          "pcf-hidden"
+        );
 
-        updatePanel();
-      };
+      updatePanel();
+    };
 
     document.body.appendChild(
       button
@@ -1484,40 +1708,25 @@
 
   /*
    * =========================================================
-   * MUTATION SCANNING
+   * BACKGROUND DISCOVERY
    * =========================================================
-   *
-   * We discover newly-added courses but DO NOT immediately
-   * hide newly-added recording cards.
-   *
-   * This is critical for Panopto's lazy loader.
    */
 
-  function rescan() {
+  function scheduleDiscovery() {
     clearTimeout(
       scanTimer
     );
 
     scanTimer =
       setTimeout(
-        async () => {
-          if (isScanning) {
-            return;
-          }
+        () => {
+          discoverEntries({
+            save: true
+          });
 
-          isScanning = true;
-
-          try {
-            discoverEntries({
-              save: true
-            });
-
-            updatePanel();
-          } finally {
-            isScanning = false;
-          }
+          updatePanel();
         },
-        400
+        500
       );
   }
 
@@ -1534,51 +1743,30 @@
     createLauncher();
 
     /*
-     * Merge current discoveries with remembered discoveries.
+     * Discover whatever is currently on the page, but merge
+     * it with remembered classes.
      */
     discoverEntries({
       save: true
     });
 
     /*
-     * Initially show everything.
+     * DO NOT filter immediately.
      *
-     * We do NOT immediately filter because Panopto may
-     * still be building its recording list.
+     * First let Panopto finish constructing its recording
+     * list.
      */
-    showAllRecordingCards();
+    showEverything();
 
     /*
-     * Allow Panopto to finish its initial lazy loading.
+     * Watch Panopto add/remove recording DOM nodes.
+     *
+     * This observer does NOT filter cards. That is intentional.
      */
-    setTimeout(
-      async () => {
-        await loadMorePanoptoRecordings();
-
-        if (
-          state.enabled &&
-          state.selected.length > 0
-        ) {
-          applyFinalFilter();
-        } else {
-          showAllRecordingCards();
-          updatePanel(
-            findRecordingCards().length
-          );
-        }
-      },
-      800
-    );
-
-    /*
-     * Watch Panopto dynamically adding recordings.
-     */
-    const observer =
-      new MutationObserver(
-        () => {
-          rescan();
-        }
-      );
+    observer =
+      new MutationObserver(() => {
+        scheduleDiscovery();
+      });
 
     observer.observe(
       document.body,
@@ -1589,12 +1777,36 @@
     );
 
     /*
-     * User scrolling.
+     * Give Panopto time to initialize before starting our
+     * own lazy-load pass.
+     */
+    setTimeout(
+      async () => {
+        await loadMoreRecordings();
+
+        if (
+          state.enabled &&
+          state.selected.length > 0
+        ) {
+          applyFilter();
+        } else {
+          showEverything();
+
+          updatePanel(
+            findRecordingCards().length
+          );
+        }
+      },
+      1200
+    );
+
+    /*
+     * User scrolling should cause new classes to be remembered.
      */
     window.addEventListener(
       "scroll",
       () => {
-        rescan();
+        scheduleDiscovery();
       },
       {
         passive: true
