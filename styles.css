@@ -46,10 +46,6 @@
   cursor: pointer;
 }
 
-/* ---------------------------------------------------------
-   DESCRIPTION / SEARCH
-   --------------------------------------------------------- */
-
 .pcf-description {
   padding: 10px 14px 5px;
   color: #666;
@@ -115,7 +111,7 @@
 }
 
 /* ---------------------------------------------------------
-   ALL MAIN BUTTONS
+   MAIN BUTTONS
    --------------------------------------------------------- */
 
 .pcf-global-buttons,
@@ -176,7 +172,7 @@
 }
 
 /* ---------------------------------------------------------
-   VIDEO ACTION BUTTONS
+   VIDEO ACTIONS
    --------------------------------------------------------- */
 
 .pcf-video-actions {
@@ -212,7 +208,7 @@
 }
 
 /* ---------------------------------------------------------
-   TOGGLE
+   TOGGLES
    --------------------------------------------------------- */
 
 .pcf-toggle {
@@ -231,12 +227,18 @@
   height: 45vh;
   max-height: 45vh;
 
-  overflow-y: scroll;
+  overflow-y: auto;
   overflow-x: hidden;
 
   border-top: 1px solid #eee;
 
   box-sizing: border-box;
+
+  /*
+   * Keep the scrolling container above the page,
+   * but don't let it affect the rest of the panel.
+   */
+  position: relative;
 }
 
 #pcf-course-list::-webkit-scrollbar {
@@ -273,7 +275,6 @@
 
 .pcf-semester-name {
   flex: 1;
-
   min-width: 0;
 
   overflow: hidden;
@@ -291,6 +292,7 @@
 
 .pcf-semester-count {
   margin-left: 5px;
+
   color: #777;
   font-size: 11px;
 }
@@ -310,7 +312,6 @@
   height: 24px;
 
   padding: 0;
-
   margin-right: 5px;
 
   flex-shrink: 0;
@@ -330,7 +331,7 @@
 }
 
 /* ---------------------------------------------------------
-   COURSE ROWS
+   COURSE ROW
    --------------------------------------------------------- */
 
 .pcf-course-row {
@@ -393,25 +394,18 @@
   cursor: help;
 }
 
-/*
- * Custom tooltip.
- *
- * The actual tooltip text comes from the
- * data-tooltip attribute added by content.js.
- */
+/* ---------------------------------------------------------
+   CUSTOM TOOLTIP
+   --------------------------------------------------------- */
 
 .pcf-course-display-name::after {
   content: attr(data-tooltip);
 
-  position: absolute;
-
-  left: 0;
-  bottom: calc(100% + 7px);
+  position: fixed;
 
   z-index: 2147483647;
 
   max-width: 280px;
-  width: max-content;
 
   padding: 7px 9px;
 
@@ -434,18 +428,33 @@
 
   pointer-events: none;
 
+  /*
+   * Position the tooltip near the top of the
+   * course name without affecting scrolling.
+   */
+  transform: translateY(-4px);
+
   transition:
     opacity 0.12s ease,
-    visibility 0.12s ease;
+    visibility 0.12s ease,
+    transform 0.12s ease;
 }
+
+.pcf-course-display-name:hover::after {
+  opacity: 1;
+  visibility: visible;
+
+  transform: translateY(0);
+}
+
+/*
+ * Small arrow.
+ */
 
 .pcf-course-display-name::before {
   content: "";
 
-  position: absolute;
-
-  left: 12px;
-  bottom: calc(100% + 2px);
+  position: fixed;
 
   z-index: 2147483647;
 
@@ -460,13 +469,8 @@
   visibility: hidden;
 
   pointer-events: none;
-
-  transition:
-    opacity 0.12s ease,
-    visibility 0.12s ease;
 }
 
-.pcf-course-display-name:hover::after,
 .pcf-course-display-name:hover::before {
   opacity: 1;
   visibility: visible;
