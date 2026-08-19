@@ -90,6 +90,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  flex-wrap: wrap;
 
   gap: 6px;
 }
@@ -110,13 +111,14 @@
 }
 
 /* ---------------------------------------------------------
-   MAIN BUTTONS
+   ALL MAIN BUTTONS
    --------------------------------------------------------- */
 
 .pcf-buttons {
   display: flex;
   justify-content: center;
   align-items: center;
+  flex-wrap: wrap;
 
   gap: 6px;
 
@@ -127,6 +129,7 @@
 #pcf-refresh {
   border: 1px solid #bbb;
   background: white;
+
   border-radius: 6px;
 
   padding: 6px 9px;
@@ -139,9 +142,16 @@
   background: #f0f0f0;
 }
 
+/* ---------------------------------------------------------
+   TOGGLE
+   --------------------------------------------------------- */
+
 .pcf-toggle {
   display: block;
+
   padding: 5px 14px;
+
+  text-align: center;
 }
 
 /* ---------------------------------------------------------
@@ -178,7 +188,7 @@
 }
 
 /* ---------------------------------------------------------
-   SEMESTER HEADER
+   SEMESTER HEADINGS
    --------------------------------------------------------- */
 
 .pcf-semester-header {
