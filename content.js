@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "panoptoCourseFilterV13";
+  const STORAGE_KEY = "panoptoCourseFilterV14";
 
   const state = {
     entries: [],
@@ -9,7 +9,8 @@
     currentClasses: [],
     enabled: true,
     collapsedSemesters: {},
-    onlySelectedSemesters: false
+    onlySelectedSemesters: false,
+    customNames: {}
   };
 
   let scanTimer = null;
@@ -34,7 +35,6 @@
    * COMP-4300-001 (Spring 2026)
    *
    * Winter is intentionally NOT supported.
-   * =========================================================
    */
 
   const FORWARD_RE =
@@ -127,6 +127,13 @@
     return `${entry.term} ${entry.year}`;
   }
 
+  function getDisplayName(entry) {
+    return (
+      state.customNames[entry.key] ||
+      entry.course
+    );
+  }
+
   function sortEntries(entries) {
     const termOrder = {
       Fall: 3,
@@ -216,6 +223,9 @@
       state.collapsedSemesters =
         state.collapsedSemesters || {};
 
+      state.customNames =
+        state.customNames || {};
+
       state.enabled =
         typeof state.enabled === "boolean"
           ? state.enabled
@@ -262,7 +272,9 @@
           collapsedSemesters:
             state.collapsedSemesters,
           onlySelectedSemesters:
-            state.onlySelectedSemesters
+            state.onlySelectedSemesters,
+          customNames:
+            state.customNames
         }
       });
 
@@ -557,10 +569,6 @@
         matchingCount++;
 
       } else {
-        /*
-         * Keep the recording in the layout.
-         * Never use display:none.
-         */
         card.classList.add(
           "pcf-filtered-out"
         );
@@ -583,7 +591,7 @@
 
   /*
    * =========================================================
-   * PANEL UPDATE DEBOUNCING
+   * PANEL UPDATE
    * =========================================================
    */
 
@@ -645,6 +653,127 @@
 
   /*
    * =========================================================
+   * RENAME COURSE
+   * =========================================================
+   */
+
+  async function renameCourse(entry) {
+    const currentName =
+      getDisplayName(entry);
+
+    const newName =
+      window.prompt(
+        `Rename ${entry.course}\n\n` +
+        `This only changes the name shown by the extension.`,
+        currentName
+      );
+
+    if (newName === null) {
+      return;
+    }
+
+    const cleaned =
+      normalize(newName);
+
+    if (!cleaned) {
+      delete state.customNames[
+        entry.key
+      ];
+    } else {
+      state.customNames[
+        entry.key
+      ] = cleaned;
+    }
+
+    await saveState();
+
+    updatePanel();
+  }
+
+  /*
+   * =========================================================
+   * RESET CUSTOM NAMES
+   * =========================================================
+   */
+
+  async function resetCustomNames() {
+    const names =
+      Object.keys(
+        state.customNames
+      );
+
+    if (
+      names.length === 0
+    ) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        "Reset all custom course names?"
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    state.customNames = {};
+
+    await saveState();
+
+    updatePanel();
+  }
+
+  /*
+   * =========================================================
+   * EXPAND / COLLAPSE ALL
+   * =========================================================
+   */
+
+  async function expandAllSemesters() {
+    const groups =
+      new Set();
+
+    state.entries.forEach(entry => {
+      groups.add(
+        semesterKey(entry)
+      );
+    });
+
+    groups.forEach(semester => {
+      state.collapsedSemesters[
+        semester
+      ] = false;
+    });
+
+    await saveState();
+
+    updatePanel();
+  }
+
+  async function collapseAllSemesters() {
+    const groups =
+      new Set();
+
+    state.entries.forEach(entry => {
+      groups.add(
+        semesterKey(entry)
+      );
+    });
+
+    groups.forEach(semester => {
+      state.collapsedSemesters[
+        semester
+      ] = true;
+    });
+
+    await saveState();
+
+    updatePanel();
+  }
+
+  /*
+   * =========================================================
    * MANUAL VIDEO RELOAD
    * =========================================================
    */
@@ -690,7 +819,7 @@
       window.confirm(
         "Reset everything?\n\n" +
         "This will remove discovered classes, selected classes, " +
-        "saved current classes, and saved preferences."
+        "saved current classes, custom names, and saved preferences."
       );
 
     if (!confirmed) {
@@ -703,11 +832,10 @@
     state.collapsedSemesters = {};
     state.onlySelectedSemesters = false;
     state.enabled = true;
+    state.customNames = {};
 
     try {
-      if (
-        contextValid()
-      ) {
+      if (contextValid()) {
         await chrome.storage.local.remove(
           STORAGE_KEY
         );
@@ -719,9 +847,6 @@
       );
     }
 
-    /*
-     * Rediscover what is currently present on the page.
-     */
     discoverEntries({
       replace: true
     });
@@ -802,6 +927,16 @@
         </button>
       </div>
 
+      <div class="pcf-semester-actions">
+        <button id="pcf-expand-all">
+          ▼ Expand All
+        </button>
+
+        <button id="pcf-collapse-all">
+          ▶ Collapse All
+        </button>
+      </div>
+
       <div class="pcf-current-box">
         <div class="pcf-current-title">
           ⭐ Current Classes
@@ -851,6 +986,10 @@
 
         <button id="pcf-rediscover">
           ↻ Forget & Rediscover
+        </button>
+
+        <button id="pcf-reset-names">
+          Reset Course Names
         </button>
 
         <button id="pcf-reset">
@@ -952,7 +1091,7 @@
       };
 
     /*
-     * GLOBAL SELECT ALL
+     * SELECT ALL
      */
 
     document.getElementById(
@@ -978,9 +1117,14 @@
                 return true;
               }
 
-              return entryLabel(entry)
-                .toUpperCase()
-                .includes(search);
+              return (
+                entryLabel(entry)
+                  .toUpperCase()
+                  .includes(search) ||
+                getDisplayName(entry)
+                  .toUpperCase()
+                  .includes(search)
+              );
             })
             .map(entry =>
               entry.key
@@ -1004,7 +1148,7 @@
       };
 
     /*
-     * GLOBAL CLEAR ALL
+     * CLEAR ALL
      */
 
     document.getElementById(
@@ -1020,6 +1164,28 @@
         updatePanel(
           findRecordingCards().length
         );
+      };
+
+    /*
+     * EXPAND ALL
+     */
+
+    document.getElementById(
+      "pcf-expand-all"
+    ).onclick =
+      () => {
+        void expandAllSemesters();
+      };
+
+    /*
+     * COLLAPSE ALL
+     */
+
+    document.getElementById(
+      "pcf-collapse-all"
+    ).onclick =
+      () => {
+        void collapseAllSemesters();
       };
 
     /*
@@ -1134,6 +1300,39 @@
             replace: true
           });
 
+          /*
+           * Remove selections/custom names for courses
+           * that no longer exist.
+           */
+          const validKeys =
+            new Set(
+              state.entries.map(
+                entry => entry.key
+              )
+            );
+
+          state.selected =
+            state.selected.filter(
+              key =>
+                validKeys.has(key)
+            );
+
+          state.currentClasses =
+            state.currentClasses.filter(
+              key =>
+                validKeys.has(key)
+            );
+
+          Object.keys(
+            state.customNames
+          ).forEach(key => {
+            if (!validKeys.has(key)) {
+              delete state.customNames[
+                key
+              ];
+            }
+          });
+
           await saveState();
 
           updatePanel();
@@ -1143,6 +1342,17 @@
           button.textContent =
             "↻ Forget & Rediscover";
         }
+      };
+
+    /*
+     * RESET COURSE NAMES
+     */
+
+    document.getElementById(
+      "pcf-reset-names"
+    ).onclick =
+      () => {
+        void resetCustomNames();
       };
 
     /*
@@ -1216,22 +1426,23 @@
 
     list.innerHTML = "";
 
-    /*
-     * Group everything by semester first.
-     */
-
     const groups =
       new Map();
 
     state.entries
       .filter(entry => {
-        const label =
+        const original =
           entryLabel(entry)
+            .toUpperCase();
+
+        const custom =
+          getDisplayName(entry)
             .toUpperCase();
 
         return (
           !search ||
-          label.includes(search)
+          original.includes(search) ||
+          custom.includes(search)
         );
       })
       .forEach(entry => {
@@ -1252,10 +1463,6 @@
           .push(entry);
       });
 
-    /*
-     * Render semesters.
-     */
-
     groups.forEach(
       (entries, semester) => {
         const semesterKeys =
@@ -1271,10 +1478,6 @@
             )
           ).length;
 
-        /*
-         * Hide semesters without selected classes if the
-         * option is enabled.
-         */
         if (
           state.onlySelectedSemesters &&
           selectedInSemester === 0
@@ -1297,7 +1500,10 @@
             ];
 
         header.innerHTML = `
-          <button class="pcf-semester-toggle">
+          <button
+            class="pcf-semester-toggle"
+            title="${collapsed ? "Expand" : "Collapse"} ${semester}"
+          >
             ${collapsed ? "▶" : "▼"}
           </button>
 
@@ -1336,7 +1542,7 @@
         }
 
         /*
-         * COLLAPSE
+         * COLLAPSE / EXPAND
          */
 
         header
@@ -1408,6 +1614,14 @@
          */
 
         entries.forEach(entry => {
+          const row =
+            document.createElement(
+              "div"
+            );
+
+          row.className =
+            "pcf-course-row";
+
           const label =
             document.createElement(
               "label"
@@ -1464,18 +1678,59 @@
 
               await saveState();
 
-              /*
-               * Do NOT rebuild the panel here.
-               * This keeps checkbox interaction stable.
-               */
               applyFilter();
             };
 
+          const nameContainer =
+            document.createElement(
+              "span"
+            );
+
+          nameContainer.className =
+            "pcf-course-name";
+
+          const displayName =
+            document.createElement(
+              "span"
+            );
+
+          displayName.className =
+            "pcf-course-display-name";
+
+          displayName.textContent =
+            getDisplayName(entry);
+
+          nameContainer.appendChild(
+            displayName
+          );
+
+          /*
+           * Show the real course code if renamed.
+           */
+          if (
+            state.customNames[
+              entry.key
+            ]
+          ) {
+            const originalName =
+              document.createElement(
+                "span"
+              );
+
+            originalName.className =
+              "pcf-course-original-name";
+
+            originalName.textContent =
+              entry.course;
+
+            nameContainer.appendChild(
+              originalName
+            );
+          }
+
           label.append(
             checkbox,
-            document.createTextNode(
-              entry.course
-            )
+            nameContainer
           );
 
           if (
@@ -1492,7 +1747,7 @@
               "pcf-star";
 
             star.textContent =
-              " ★";
+              "★";
 
             star.title =
               "Saved as a current class";
@@ -1502,8 +1757,44 @@
             );
           }
 
+          /*
+           * RENAME BUTTON
+           */
+
+          const renameButton =
+            document.createElement(
+              "button"
+            );
+
+          renameButton.className =
+            "pcf-rename";
+
+          renameButton.type =
+            "button";
+
+          renameButton.textContent =
+            "✎";
+
+          renameButton.title =
+            "Rename course";
+
+          renameButton.onclick =
+            event => {
+              event.preventDefault();
+              event.stopPropagation();
+
+              void renameCourse(
+                entry
+              );
+            };
+
+          row.append(
+            label,
+            renameButton
+          );
+
           courses.appendChild(
-            label
+            row
           );
         });
 
@@ -1569,7 +1860,7 @@
             )
           )
           .map(entry =>
-            entry.course
+            getDisplayName(entry)
           );
 
       if (
@@ -1687,17 +1978,10 @@
           return;
         }
 
-        /*
-         * Discover newly visible classes.
-         */
         discoverEntries();
 
         void saveState();
 
-        /*
-         * Apply the existing selection to newly loaded
-         * recordings.
-         */
         applyFilter();
 
       }, 100);
@@ -1719,10 +2003,12 @@
     createPanel();
     createLauncher();
 
-    /*
-     * Watch Panopto, but NEVER let mutations inside our
-     * panel trigger a panel rebuild.
-     */
+    discoverEntries();
+
+    await saveState();
+
+    applyFilter();
+
     observer =
       new MutationObserver(
         mutations => {
@@ -1797,21 +2083,6 @@
       }
     );
 
-    /*
-     * Initial discovery.
-     */
-    discoverEntries();
-
-    await saveState();
-
-    /*
-     * Initial filter.
-     */
-    applyFilter();
-
-    /*
-     * Scrolling can cause Panopto to add recordings.
-     */
     window.addEventListener(
       "scroll",
       () => {
@@ -1822,9 +2093,6 @@
       }
     );
 
-    /*
-     * Give Panopto time to populate the page.
-     */
     let attempts = 0;
 
     const timer =
@@ -1845,9 +2113,6 @@
         }
       }, 500);
 
-    /*
-     * Full page load.
-     */
     window.addEventListener(
       "load",
       () => {
