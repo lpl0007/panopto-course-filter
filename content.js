@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "panoptoCourseFilterV10";
+  const STORAGE_KEY = "panoptoCourseFilterV11";
 
   const state = {
     entries: [],
@@ -14,6 +14,7 @@
   let destroyed = false;
   let scanTimer = null;
   let reloadInProgress = false;
+  let observer = null;
 
   /*
    * =========================================================
@@ -154,9 +155,7 @@
 
   async function loadState() {
     try {
-      if (
-        !extensionContextIsValid()
-      ) {
+      if (!extensionContextIsValid()) {
         return false;
       }
 
@@ -165,9 +164,7 @@
           STORAGE_KEY
         );
 
-      if (
-        !extensionContextIsValid()
-      ) {
+      if (!extensionContextIsValid()) {
         return false;
       }
 
@@ -276,7 +273,7 @@
 
   /*
    * =========================================================
-   * DISCOVER COURSES
+   * COURSE DISCOVERY
    * =========================================================
    */
 
@@ -356,7 +353,7 @@
 
   /*
    * =========================================================
-   * RECORDING CARDS
+   * RECORDING CARD DETECTION
    * =========================================================
    */
 
@@ -487,6 +484,9 @@
     let matchingCount = 0;
 
     cards.forEach(card => {
+      /*
+       * No filter means everything stays visible.
+       */
       if (
         !state.enabled ||
         state.selected.length === 0
@@ -512,6 +512,9 @@
         return;
       }
 
+      /*
+       * Selected class -> visible.
+       */
       if (
         cardMatchesSelection(card)
       ) {
@@ -532,20 +535,28 @@
         );
 
         matchingCount++;
-      } else {
-        card.classList.add(
-          "pcf-filtered-out"
-        );
 
-        card.style.visibility =
-          "hidden";
-
-        card.style.opacity =
-          "0";
-
-        card.style.pointerEvents =
-          "none";
+        return;
       }
+
+      /*
+       * Unselected class -> hidden, but NOT display:none.
+       *
+       * Keeping the card in the layout helps Panopto's
+       * lazy-loading mechanism continue working.
+       */
+      card.classList.add(
+        "pcf-filtered-out"
+      );
+
+      card.style.visibility =
+        "hidden";
+
+      card.style.opacity =
+        "0";
+
+      card.style.pointerEvents =
+        "none";
     });
 
     updatePanel(
@@ -596,15 +607,18 @@
 
   /*
    * =========================================================
-   * RELOAD VIDEOS
+   * MANUAL VIDEO RELOAD
+   * =========================================================
    *
-   * This deliberately uses a full Panopto page reload.
+   * A real page reload lets Panopto rebuild its own recording
+   * list normally.
    *
-   * The extension state is stored in chrome.storage first,
-   * so selections and discovered classes survive.
+   * The selected classes are saved first.
    *
-   * This is much more reliable than trying to manipulate
-   * Panopto's internal React/lazy-loading system.
+   * On the newly loaded page, init() installs the Mutation-
+   * Observer BEFORE Panopto finishes adding all recordings.
+   *
+   * Every newly-added batch is then filtered.
    * =========================================================
    */
 
@@ -630,27 +644,20 @@
     }
 
     try {
-      /*
-       * Make sure the current state is safely stored before
-       * reloading the actual Panopto page.
-       */
       await saveState();
 
       /*
-       * Give storage a moment to complete.
+       * Give Chrome storage time to commit.
        */
       await new Promise(resolve => {
         setTimeout(
           resolve,
-          150
+          200
         );
       });
 
       /*
-       * Full page reload.
-       *
-       * Panopto itself will rebuild the recording list,
-       * including lazy-loaded recordings.
+       * Reload the actual Panopto page.
        */
       window.location.reload();
 
@@ -668,6 +675,52 @@
           "↻ Reload Videos";
       }
     }
+  }
+
+  /*
+   * =========================================================
+   * FILTER NEWLY ADDED CARDS
+   * =========================================================
+   *
+   * This is the important part for the reload problem.
+   *
+   * Panopto frequently adds recordings AFTER our initial
+   * page load. MutationObserver catches those additions and
+   * immediately calls applyFilter().
+   * =========================================================
+   */
+
+  function handleDynamicContent() {
+    if (destroyed) {
+      return;
+    }
+
+    clearTimeout(
+      scanTimer
+    );
+
+    scanTimer =
+      setTimeout(() => {
+        if (destroyed) {
+          return;
+        }
+
+        /*
+         * Remember any newly discovered courses.
+         */
+        discoverEntries({
+          save: true
+        });
+
+        /*
+         * MOST IMPORTANT:
+         *
+         * Re-run the filter against all recording cards,
+         * including cards Panopto just created.
+         */
+        applyFilter();
+
+      }, 80);
   }
 
   /*
@@ -786,7 +839,7 @@
       };
 
     /*
-     * FILTER ENABLE/DISABLE
+     * ENABLE/DISABLE
      */
 
     const enabled =
@@ -804,10 +857,6 @@
 
         await saveState();
 
-        /*
-         * If filtering was disabled, immediately show all
-         * currently loaded recordings.
-         */
         if (!state.enabled) {
           clearCardFiltering();
 
@@ -818,10 +867,6 @@
           return;
         }
 
-        /*
-         * If filtering was enabled, apply it to everything
-         * currently loaded.
-         */
         applyFilter();
       };
 
@@ -849,7 +894,7 @@
         await saveState();
 
         /*
-         * Do not hide anything when nothing is selected.
+         * Immediately show all loaded recordings.
          */
         clearCardFiltering();
 
@@ -963,18 +1008,20 @@
 
         try {
           /*
-           * Forget only the discovered course list.
-           *
-           * We intentionally leave selected/current classes
-           * alone because the user may want to rediscover
-           * while retaining their choices.
+           * Forget discovered classes.
            */
           state.entries = [];
 
+          /*
+           * Keep selected/current classes.
+           *
+           * They are not automatically deleted just because
+           * the discovery list was wiped.
+           */
           await saveState();
 
           /*
-           * Scan the current page.
+           * Rediscover from the current page.
            */
           discoverEntries({
             replace: true,
@@ -1141,7 +1188,7 @@
           };
 
         /*
-         * All
+         * Select all
          */
 
         header
@@ -1192,7 +1239,7 @@
           };
 
         /*
-         * Courses
+         * Individual courses
          */
 
         entries.forEach(entry => {
@@ -1253,9 +1300,8 @@
               await saveState();
 
               /*
-               * Selection changes only affect recordings
-               * already loaded. Use "Reload Videos" when
-               * you want Panopto to fetch the complete list.
+               * Apply immediately to all currently loaded
+               * recordings.
                */
               applyFilter();
             };
@@ -1303,7 +1349,7 @@
     );
 
     /*
-     * Count recordings
+     * Recording count
      */
 
     if (
@@ -1417,44 +1463,14 @@
 
   /*
    * =========================================================
-   * BACKGROUND DISCOVERY
-   * =========================================================
-   */
-
-  function scheduleDiscovery() {
-    if (
-      destroyed
-    ) {
-      return;
-    }
-
-    clearTimeout(
-      scanTimer
-    );
-
-    scanTimer =
-      setTimeout(() => {
-        if (
-          destroyed
-        ) {
-          return;
-        }
-
-        discoverEntries({
-          save: true
-        });
-
-        updatePanel();
-      }, 500);
-  }
-
-  /*
-   * =========================================================
-   * INIT
+   * INITIALIZATION
    * =========================================================
    */
 
   async function init() {
+    /*
+     * Load saved selections BEFORE creating the observer.
+     */
     const loaded =
       await loadState();
 
@@ -1469,41 +1485,146 @@
     createLauncher();
 
     /*
-     * Add whatever is currently visible to the remembered
-     * course list.
+     * IMPORTANT:
+     *
+     * Start observing BEFORE doing our first scan.
+     *
+     * Panopto can continue adding recordings for a while
+     * after document_idle.
+     */
+    observer =
+      new MutationObserver(
+        mutations => {
+          let relevant = false;
+
+          for (
+            const mutation of mutations
+          ) {
+            if (
+              mutation.type !==
+              "childList"
+            ) {
+              continue;
+            }
+
+            if (
+              mutation.addedNodes &&
+              mutation.addedNodes.length
+            ) {
+              relevant = true;
+              break;
+            }
+          }
+
+          if (relevant) {
+            handleDynamicContent();
+          }
+        }
+      );
+
+    try {
+      observer.observe(
+        document.body,
+        {
+          childList: true,
+          subtree: true
+        }
+      );
+    } catch (error) {
+      console.warn(
+        "Panopto Course Filter: MutationObserver failed.",
+        error
+      );
+    }
+
+    /*
+     * Initial discovery.
      */
     discoverEntries({
       save: true
     });
 
     /*
-     * Apply the saved filter to the current recordings.
+     * Initial filter.
      */
     applyFilter();
 
     /*
-     * Keep discovering classes as Panopto adds content.
+     * Keep discovering courses as the user scrolls.
      */
-    const observer =
-      new MutationObserver(() => {
-        scheduleDiscovery();
-      });
-
-    observer.observe(
-      document.body,
-      {
-        childList: true,
-        subtree: true
-      }
-    );
-
     window.addEventListener(
       "scroll",
       () => {
-        scheduleDiscovery();
+        handleDynamicContent();
       },
       {
         passive: true
+      }
+    );
+
+    /*
+     * =======================================================
+     * POST-LOAD FILTERING
+     *
+     * Panopto can populate the recording list well after
+     * document_idle.
+     *
+     * Run repeated filters for the first 15 seconds so that
+     * videos arriving after a reload cannot bypass the filter.
+     * =======================================================
+     */
+
+    let attempts = 0;
+
+    const postLoadTimer =
+      setInterval(() => {
+        if (
+          destroyed
+        ) {
+          clearInterval(
+            postLoadTimer
+          );
+
+          return;
+        }
+
+        attempts++;
+
+        discoverEntries({
+          save: true
+        });
+
+        applyFilter();
+
+        if (
+          attempts >= 30
+        ) {
+          clearInterval(
+            postLoadTimer
+          );
+        }
+      }, 500);
+
+    /*
+     * Also filter when the complete page load event fires.
+     */
+    window.addEventListener(
+      "load",
+      () => {
+        if (destroyed) {
+          return;
+        }
+
+        setTimeout(() => {
+          discoverEntries({
+            save: true
+          });
+
+          applyFilter();
+        }, 300);
+      },
+      {
+        once: true
       }
     );
 
