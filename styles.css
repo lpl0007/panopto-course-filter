@@ -12,7 +12,7 @@
   border: 1px solid #ccc;
   border-radius: 12px;
 
-  box-shadow: 0 8px 30px rgba(0,0,0,.25);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, .25);
 
   font-family: Arial, sans-serif;
   font-size: 14px;
@@ -100,6 +100,12 @@
   background: #f1f1f1;
 }
 
+.pcf-current-buttons button:disabled,
+.pcf-course-list-actions button:disabled {
+  opacity: .6;
+  cursor: wait;
+}
+
 .pcf-buttons {
   display: flex;
   gap: 6px;
@@ -122,6 +128,12 @@
   background: #f1f1f1;
 }
 
+.pcf-buttons button:disabled,
+#pcf-refresh:disabled {
+  opacity: .6;
+  cursor: wait;
+}
+
 .pcf-toggle {
   display: block;
   padding: 5px 14px;
@@ -135,11 +147,6 @@
   width: 100%;
 }
 
-#pcf-rediscover:disabled {
-  opacity: .6;
-  cursor: wait;
-}
-
 #pcf-course-list {
   max-height: 45vh;
   overflow-y: auto;
@@ -148,12 +155,12 @@
 }
 
 /*
- * THIS FIXES THE WHITE SPACE.
+ * Filtered recording cards are removed from the visual
+ * layout, eliminating the white space.
  *
- * Previously the extension used visibility:hidden,
- * which kept the recording's entire layout box.
- *
- * display:none collapses the recording completely.
+ * IMPORTANT:
+ * We only apply this AFTER Panopto has been given a chance
+ * to lazy-load additional recordings.
  */
 .pcf-filtered-out {
   display: none !important;
@@ -265,7 +272,7 @@
 
   cursor: pointer;
 
-  box-shadow: 0 4px 15px rgba(0,0,0,.25);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, .25);
 }
 
 #pcf-launcher:hover {
