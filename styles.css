@@ -2,8 +2,9 @@
   position: fixed;
   top: 80px;
   right: 18px;
-  width: 320px;
+  width: 340px;
   max-height: calc(100vh - 110px);
+
   z-index: 2147483647;
 
   background: white;
@@ -24,6 +25,12 @@
   display: none;
 }
 
+/*
+ * =========================================================
+ * HEADER
+ * =========================================================
+ */
+
 .pcf-header {
   display: flex;
   justify-content: space-between;
@@ -42,80 +49,152 @@
 #pcf-close {
   border: 0;
   background: transparent;
+
   font-size: 22px;
+
   cursor: pointer;
 }
 
+/*
+ * =========================================================
+ * DESCRIPTION
+ * =========================================================
+ */
+
 .pcf-description {
   padding: 10px 14px 5px;
+
   color: #666;
+
+  line-height: 1.35;
 }
+
+/*
+ * =========================================================
+ * SEARCH
+ * =========================================================
+ */
 
 #pcf-search {
   box-sizing: border-box;
 
   width: calc(100% - 28px);
+
   margin: 8px 14px;
 
   padding: 8px 10px;
 
   border: 1px solid #bbb;
   border-radius: 7px;
+
+  font-size: 14px;
 }
 
+/*
+ * =========================================================
+ * GLOBAL BUTTONS
+ * =========================================================
+ */
+
+.pcf-global-buttons {
+  display: flex;
+
+  gap: 6px;
+
+  padding: 2px 14px 8px;
+}
+
+.pcf-global-buttons button {
+  flex: 1;
+
+  border: 1px solid #bbb;
+
+  background: white;
+
+  border-radius: 6px;
+
+  padding: 7px 8px;
+
+  cursor: pointer;
+
+  font-weight: 600;
+}
+
+.pcf-global-buttons button:hover {
+  background: #f2f2f2;
+}
+
+/*
+ * =========================================================
+ * CURRENT CLASSES
+ * =========================================================
+ */
+
 .pcf-current-box {
-  margin: 6px 14px 8px;
-  padding: 9px 10px;
+  margin: 0 14px 8px;
 
-  border: 1px solid #d7e2d8;
-  border-radius: 9px;
+  padding: 9px;
 
-  background: #f3f8f3;
+  background: #fff9df;
+
+  border: 1px solid #ead98c;
+
+  border-radius: 8px;
 }
 
 .pcf-current-title {
-  font-weight: bold;
   margin-bottom: 7px;
+
+  font-weight: bold;
+
+  color: #665600;
 }
 
 .pcf-current-buttons {
   display: flex;
+
   flex-wrap: wrap;
+
   gap: 5px;
 }
 
-.pcf-current-buttons button,
-.pcf-course-list-actions button {
-  border: 1px solid #bbb;
-  background: white;
+.pcf-current-buttons button {
+  border: 1px solid #c7b66b;
+
+  background: #fffdf1;
+
   border-radius: 6px;
 
-  padding: 6px 8px;
+  padding: 5px 7px;
 
   cursor: pointer;
+
+  font-size: 12px;
 }
 
-.pcf-current-buttons button:hover,
-.pcf-course-list-actions button:hover {
-  background: #f1f1f1;
+.pcf-current-buttons button:hover {
+  background: #fff7cc;
 }
 
-.pcf-current-buttons button:disabled,
-.pcf-course-list-actions button:disabled {
-  opacity: .6;
-  cursor: wait;
-}
+/*
+ * =========================================================
+ * SEMESTER BUTTONS
+ * =========================================================
+ */
 
 .pcf-buttons {
   display: flex;
+
   gap: 6px;
+
   padding: 3px 14px 8px;
 }
 
-.pcf-buttons button,
-#pcf-refresh {
+.pcf-buttons button {
   border: 1px solid #bbb;
+
   background: white;
+
   border-radius: 6px;
 
   padding: 6px 9px;
@@ -123,149 +202,315 @@
   cursor: pointer;
 }
 
-.pcf-buttons button:hover,
-#pcf-refresh:hover {
-  background: #f1f1f1;
+.pcf-buttons button:hover {
+  background: #f2f2f2;
 }
 
-.pcf-buttons button:disabled,
-#pcf-refresh:disabled {
-  opacity: .6;
-  cursor: wait;
-}
+/*
+ * =========================================================
+ * TOGGLES
+ * =========================================================
+ */
 
 .pcf-toggle {
   display: block;
+
   padding: 5px 14px;
+
+  cursor: pointer;
+
+  color: #444;
 }
 
-.pcf-course-list-actions {
-  padding: 5px 14px 8px;
+.pcf-toggle input {
+  margin-right: 7px;
 }
 
-#pcf-rediscover {
-  width: 100%;
+/*
+ * =========================================================
+ * VIDEO ACTIONS
+ * =========================================================
+ */
+
+.pcf-video-actions {
+  display: grid;
+
+  grid-template-columns: 1fr 1fr;
+
+  gap: 5px;
+
+  padding: 7px 14px 9px;
 }
+
+.pcf-video-actions button {
+  border: 1px solid #aaa;
+
+  background: white;
+
+  border-radius: 6px;
+
+  padding: 7px 5px;
+
+  cursor: pointer;
+
+  font-size: 11px;
+}
+
+.pcf-video-actions button:hover {
+  background: #f1f1f1;
+}
+
+.pcf-video-actions button:disabled {
+  opacity: .55;
+
+  cursor: wait;
+}
+
+#pcf-reset {
+  grid-column: 1 / -1;
+
+  color: #a12626;
+
+  border-color: #d6a3a3;
+}
+
+#pcf-reset:hover {
+  background: #fff0f0;
+}
+
+/*
+ * =========================================================
+ * COURSE LIST
+ * =========================================================
+ */
 
 #pcf-course-list {
   max-height: 45vh;
+
   overflow-y: auto;
 
   border-top: 1px solid #eee;
 }
 
 /*
- * Filtered recording cards are removed from the visual
- * layout, eliminating the white space.
- *
- * IMPORTANT:
- * We only apply this AFTER Panopto has been given a chance
- * to lazy-load additional recordings.
+ * =========================================================
+ * SEMESTER HEADER
+ * =========================================================
  */
-.pcf-filtered-out {
-  display: none !important;
-}
 
 .pcf-semester-header {
   display: flex;
+
   align-items: center;
+
   gap: 5px;
 
-  padding: 7px 9px;
+  padding: 7px 8px;
 
-  background: #f5f5f5;
+  background: #f4f4f4;
+
   border-bottom: 1px solid #ddd;
 
   position: sticky;
+
   top: 0;
+
   z-index: 2;
 }
 
-.pcf-semester-header strong {
-  flex: 1;
-}
+.pcf-semester-toggle {
+  width: 25px;
 
-.pcf-semester-toggle,
-.pcf-semester-all {
-  border: 1px solid #ccc;
-  background: white;
-  border-radius: 5px;
+  border: 0;
+
+  background: transparent;
 
   cursor: pointer;
+
+  font-size: 12px;
 }
 
-.pcf-semester-toggle {
-  width: 27px;
-  height: 25px;
+.pcf-semester-name {
+  display: flex;
+
+  align-items: center;
+
+  gap: 6px;
+
+  flex: 1;
+
+  min-width: 0;
+}
+
+.pcf-semester-name strong {
+  white-space: nowrap;
+}
+
+.pcf-semester-count {
+  color: #777;
+
+  font-size: 11px;
+
+  font-weight: normal;
 }
 
 .pcf-semester-all {
-  padding: 4px 8px;
+  border: 1px solid #bbb;
+
+  background: white;
+
+  border-radius: 5px;
+
+  padding: 4px 7px;
+
+  cursor: pointer;
+
+  font-size: 11px;
 }
 
+.pcf-semester-all:hover {
+  background: #eee;
+}
+
+/*
+ * =========================================================
+ * COURSES
+ * =========================================================
+ */
+
 .pcf-semester-courses {
-  border-bottom: 1px solid #eee;
+  background: white;
 }
 
 .pcf-course {
   display: flex;
+
   align-items: center;
+
   gap: 8px;
 
   padding: 8px 14px;
 
   cursor: pointer;
+
+  border-bottom: 1px solid #f1f1f1;
 }
 
 .pcf-course:hover {
   background: #f3f3f3;
 }
 
-.pcf-current-class {
-  font-weight: 500;
+.pcf-course input {
+  flex: 0 0 auto;
+}
+
+.pcf-course.pcf-current-class {
+  background: #fffdf0;
+}
+
+.pcf-course.pcf-current-class:hover {
+  background: #fff8d9;
 }
 
 .pcf-star {
-  color: #e6b800;
+  color: #d0a500;
+
+  font-size: 13px;
+
   margin-left: auto;
 }
 
+/*
+ * =========================================================
+ * FOOTER
+ * =========================================================
+ */
+
 .pcf-footer {
   display: flex;
+
   justify-content: space-between;
+
   align-items: center;
+
+  gap: 8px;
 
   padding: 9px 14px;
 
   border-top: 1px solid #ddd;
 
   color: #666;
+
   font-size: 12px;
+}
+
+#pcf-count {
+  min-width: 0;
+
+  line-height: 1.45;
+}
+
+.pcf-status {
+  color: #333;
+
+  font-weight: 600;
+
+  margin-bottom: 2px;
 }
 
 .pcf-discovered-count {
   color: #888;
-  margin-top: 2px;
+
+  font-size: 11px;
 }
 
 .pcf-saved-count {
-  color: #8a6d00;
-  margin-top: 2px;
+  color: #8a7000;
+
+  font-size: 11px;
 }
+
+#pcf-refresh {
+  flex: 0 0 auto;
+
+  border: 1px solid #bbb;
+
+  background: white;
+
+  border-radius: 6px;
+
+  padding: 6px 9px;
+
+  cursor: pointer;
+}
+
+#pcf-refresh:hover {
+  background: #f2f2f2;
+}
+
+/*
+ * =========================================================
+ * LAUNCHER
+ * =========================================================
+ */
 
 #pcf-launcher {
   position: fixed;
+
   right: 18px;
+
   bottom: 18px;
 
   z-index: 2147483646;
 
   border: 0;
+
   border-radius: 22px;
 
   padding: 11px 16px;
 
   background: #3f7f4f;
+
   color: white;
 
   font: bold 14px Arial, sans-serif;
@@ -277,4 +522,23 @@
 
 #pcf-launcher:hover {
   background: #336a40;
+}
+
+/*
+ * =========================================================
+ * FILTERED RECORDINGS
+ * =========================================================
+ *
+ * This class intentionally does NOT use display:none.
+ *
+ * Panopto needs the recording cards to remain part of the
+ * layout for its lazy-loading/infinite-scroll system.
+ */
+
+.pcf-filtered-out {
+  visibility: hidden !important;
+
+  opacity: 0 !important;
+
+  pointer-events: none !important;
 }
