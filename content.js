@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "panoptoCourseFilterV9";
+  const STORAGE_KEY = "panoptoCourseFilterV10";
 
   const state = {
     entries: [],
@@ -11,13 +11,13 @@
     collapsedSemesters: {}
   };
 
-  let scanTimer = null;
-  let loadingMore = false;
   let destroyed = false;
+  let scanTimer = null;
+  let reloadInProgress = false;
 
   /*
    * =========================================================
-   * COURSE / SEMESTER PARSING
+   * COURSE PARSING
    * =========================================================
    */
 
@@ -113,21 +113,24 @@
     };
 
     return entries.sort((a, b) => {
-      const ay = Number(a.year);
-      const by = Number(b.year);
+      const yearDifference =
+        Number(b.year) - Number(a.year);
 
-      if (ay !== by) {
-        return by - ay;
+      if (yearDifference !== 0) {
+        return yearDifference;
       }
 
-      const at = termOrder[a.term] || 0;
-      const bt = termOrder[b.term] || 0;
+      const termDifference =
+        (termOrder[b.term] || 0) -
+        (termOrder[a.term] || 0);
 
-      if (at !== bt) {
-        return bt - at;
+      if (termDifference !== 0) {
+        return termDifference;
       }
 
-      return a.course.localeCompare(b.course);
+      return a.course.localeCompare(
+        b.course
+      );
     });
   }
 
@@ -151,7 +154,9 @@
 
   async function loadState() {
     try {
-      if (!extensionContextIsValid()) {
+      if (
+        !extensionContextIsValid()
+      ) {
         return false;
       }
 
@@ -197,22 +202,24 @@
           : true;
 
       return true;
+
     } catch (error) {
       if (
         String(error).includes(
           "Extension context invalidated"
         )
       ) {
+        destroyed = true;
+
         console.warn(
           "Panopto Course Filter: extension was reloaded. Refresh the Panopto page."
         );
 
-        destroyed = true;
         return false;
       }
 
       console.error(
-        "Panopto Course Filter: could not load state.",
+        "Panopto Course Filter: loadState failed.",
         error
       );
 
@@ -242,22 +249,24 @@
       });
 
       return true;
+
     } catch (error) {
       if (
         String(error).includes(
           "Extension context invalidated"
         )
       ) {
+        destroyed = true;
+
         console.warn(
           "Panopto Course Filter: extension was reloaded. Refresh the Panopto page."
         );
 
-        destroyed = true;
         return false;
       }
 
       console.error(
-        "Panopto Course Filter: could not save state.",
+        "Panopto Course Filter: saveState failed.",
         error
       );
 
@@ -267,7 +276,7 @@
 
   /*
    * =========================================================
-   * COURSE DISCOVERY
+   * DISCOVER COURSES
    * =========================================================
    */
 
@@ -294,12 +303,13 @@
           return;
         }
 
-        parseEntries(text).forEach(entry => {
-          found.set(
-            entry.key,
-            entry
-          );
-        });
+        parseEntries(text)
+          .forEach(entry => {
+            found.set(
+              entry.key,
+              entry
+            );
+          });
       });
 
     if (replace) {
@@ -322,12 +332,14 @@
         }
       });
 
-      found.forEach((entry, key) => {
-        merged.set(
-          key,
-          entry
-        );
-      });
+      found.forEach(
+        (entry, key) => {
+          merged.set(
+            key,
+            entry
+          );
+        }
+      );
 
       state.entries =
         sortEntries(
@@ -344,7 +356,7 @@
 
   /*
    * =========================================================
-   * RECORDING CARD DETECTION
+   * RECORDING CARDS
    * =========================================================
    */
 
@@ -436,16 +448,10 @@
   /*
    * =========================================================
    * FILTERING
-   *
-   * We use visibility/opacity instead of display:none.
-   *
-   * The cards remain in the DOM and retain their layout
-   * dimensions so Panopto's lazy-loading system can continue
-   * working.
    * =========================================================
    */
 
-  function showEverything() {
+  function clearCardFiltering() {
     findRecordingCards()
       .forEach(card => {
         card.classList.remove(
@@ -502,6 +508,7 @@
         );
 
         matchingCount++;
+
         return;
       }
 
@@ -589,527 +596,77 @@
 
   /*
    * =========================================================
-   * PAGE SIGNATURE
-   * =========================================================
-   */
-
-  function getPageSignature() {
-    const cards =
-      findRecordingCards();
-
-    let signature =
-      `${cards.length}|`;
-
-    cards.slice(-15)
-      .forEach(card => {
-        signature +=
-          normalize(
-            card.innerText ||
-            card.textContent
-          ).slice(0, 120) +
-          "|";
-      });
-
-    return signature;
-  }
-
-  /*
-   * =========================================================
-   * SCROLL CONTAINER DETECTION
-   * =========================================================
-   */
-
-  function getScrollContainers() {
-    const result = [];
-    const seen = new Set();
-
-    function add(element) {
-      if (!element) {
-        return;
-      }
-
-      if (
-        seen.has(element)
-      ) {
-        return;
-      }
-
-      seen.add(element);
-      result.push(element);
-    }
-
-    /*
-     * Look around recording cards first.
-     */
-    const cards =
-      findRecordingCards();
-
-    cards.slice(0, 50)
-      .forEach(card => {
-        let element =
-          card.parentElement;
-
-        while (
-          element &&
-          element !== document.body &&
-          element !== document.documentElement
-        ) {
-          const style =
-            getComputedStyle(element);
-
-          const overflow =
-            style.overflowY;
-
-          if (
-            (
-              overflow === "auto" ||
-              overflow === "scroll" ||
-              overflow === "overlay"
-            ) &&
-            element.scrollHeight >
-              element.clientHeight + 50
-          ) {
-            add(element);
-          }
-
-          element =
-            element.parentElement;
-        }
-      });
-
-    /*
-     * Search for large scrolling containers.
-     */
-    document
-      .querySelectorAll("*")
-      .forEach(element => {
-        if (
-          result.length >= 10
-        ) {
-          return;
-        }
-
-        const style =
-          getComputedStyle(element);
-
-        const overflow =
-          style.overflowY;
-
-        if (
-          overflow !== "auto" &&
-          overflow !== "scroll" &&
-          overflow !== "overlay"
-        ) {
-          return;
-        }
-
-        if (
-          element.scrollHeight >
-          element.clientHeight + 300
-        ) {
-          add(element);
-        }
-      });
-
-    /*
-     * Document scrolling element goes last.
-     */
-    add(
-      document.scrollingElement
-    );
-
-    return result;
-  }
-
-  /*
-   * =========================================================
-   * WAIT
-   * =========================================================
-   */
-
-  function sleep(ms) {
-    return new Promise(resolve => {
-      setTimeout(resolve, ms);
-    });
-  }
-
-  function waitForMutation(
-    oldSignature,
-    timeout = 800
-  ) {
-    return new Promise(resolve => {
-      let finished = false;
-
-      let localObserver = null;
-
-      function finish(changed) {
-        if (finished) {
-          return;
-        }
-
-        finished = true;
-
-        if (localObserver) {
-          localObserver.disconnect();
-        }
-
-        resolve(changed);
-      }
-
-      localObserver =
-        new MutationObserver(() => {
-          finish(true);
-        });
-
-      try {
-        localObserver.observe(
-          document.body,
-          {
-            childList: true,
-            subtree: true
-          }
-        );
-      } catch (error) {
-        finish(false);
-        return;
-      }
-
-      setTimeout(() => {
-        const newSignature =
-          getPageSignature();
-
-        finish(
-          newSignature !==
-          oldSignature
-        );
-      }, timeout);
-    });
-  }
-
-  /*
-   * =========================================================
-   * GRADUAL SCROLLING
-   * =========================================================
+   * RELOAD VIDEOS
    *
-   * Panopto's lazy loader often needs the loading sentinel
-   * to actually pass through a viewport.
+   * This deliberately uses a full Panopto page reload.
    *
-   * We therefore scroll in small increments instead of
-   * jumping directly to scrollHeight.
+   * The extension state is stored in chrome.storage first,
+   * so selections and discovered classes survive.
+   *
+   * This is much more reliable than trying to manipulate
+   * Panopto's internal React/lazy-loading system.
    * =========================================================
    */
 
-  async function graduallyScrollContainer(
-    container
-  ) {
+  async function reloadVideos() {
     if (
-      destroyed ||
-      !container
-    ) {
-      return;
-    }
-
-    const isDocument =
-      container ===
-      document.scrollingElement;
-
-    const MAX_STEPS = 100;
-    const STEP = 500;
-
-    let stableAtBottom = 0;
-    let oldSignature =
-      getPageSignature();
-
-    for (
-      let step = 0;
-      step < MAX_STEPS;
-      step++
-    ) {
-      if (
-        destroyed
-      ) {
-        return;
-      }
-
-      const viewportHeight =
-        isDocument
-          ? window.innerHeight
-          : container.clientHeight;
-
-      const scrollHeight =
-        isDocument
-          ? Math.max(
-              document.body.scrollHeight,
-              document.documentElement.scrollHeight
-            )
-          : container.scrollHeight;
-
-      const currentPosition =
-        isDocument
-          ? window.scrollY
-          : container.scrollTop;
-
-      const maximum =
-        Math.max(
-          0,
-          scrollHeight -
-            viewportHeight
-        );
-
-      const nextPosition =
-        Math.min(
-          maximum,
-          currentPosition + STEP
-        );
-
-      if (
-        nextPosition <=
-        currentPosition + 2
-      ) {
-        stableAtBottom++;
-
-        /*
-         * Give Panopto several chances to append another
-         * batch after reaching the current bottom.
-         */
-        await sleep(450);
-
-        const newHeight =
-          isDocument
-            ? Math.max(
-                document.body.scrollHeight,
-                document.documentElement.scrollHeight
-              )
-            : container.scrollHeight;
-
-        if (
-          newHeight >
-          scrollHeight + 20
-        ) {
-          stableAtBottom = 0;
-          oldSignature =
-            getPageSignature();
-          continue;
-        }
-
-        const newSignature =
-          getPageSignature();
-
-        if (
-          newSignature !==
-          oldSignature
-        ) {
-          stableAtBottom = 0;
-          oldSignature =
-            newSignature;
-
-          discoverEntries({
-            save: true
-          });
-
-          continue;
-        }
-
-        if (
-          stableAtBottom >= 4
-        ) {
-          break;
-        }
-
-        continue;
-      }
-
-      stableAtBottom = 0;
-
-      if (isDocument) {
-        window.scrollTo({
-          top: nextPosition,
-          behavior: "auto"
-        });
-
-        window.dispatchEvent(
-          new Event("scroll")
-        );
-      } else {
-        container.scrollTop =
-          nextPosition;
-
-        container.dispatchEvent(
-          new Event("scroll", {
-            bubbles: true
-          })
-        );
-      }
-
-      /*
-       * Allow IntersectionObserver, React and Panopto's
-       * scroll handler to run.
-       */
-      await sleep(200);
-
-      const changed =
-        await waitForMutation(
-          oldSignature,
-          650
-        );
-
-      const newSignature =
-        getPageSignature();
-
-      if (
-        changed ||
-        newSignature !==
-        oldSignature
-      ) {
-        oldSignature =
-          newSignature;
-
-        discoverEntries({
-          save: true
-        });
-      }
-    }
-  }
-
-  /*
-   * =========================================================
-   * LOAD MORE RECORDINGS
-   * =========================================================
-   */
-
-  async function loadMoreRecordings() {
-    if (
-      loadingMore ||
+      reloadInProgress ||
       destroyed
     ) {
       return;
     }
 
-    loadingMore = true;
+    reloadInProgress = true;
+
+    const button =
+      document.getElementById(
+        "pcf-reload-videos"
+      );
+
+    if (button) {
+      button.disabled = true;
+      button.textContent =
+        "↻ Reloading...";
+    }
 
     try {
       /*
-       * NEVER leave filtered cards hidden while trying to
-       * trigger Panopto's lazy loader.
+       * Make sure the current state is safely stored before
+       * reloading the actual Panopto page.
        */
-      showEverything();
-
-      await sleep(100);
-
-      discoverEntries({
-        save: true
-      });
-
-      let containers =
-        getScrollContainers();
-
-      if (
-        containers.length === 0
-      ) {
-        containers = [
-          document.scrollingElement
-        ];
-      }
+      await saveState();
 
       /*
-       * Largest scroll areas first.
+       * Give storage a moment to complete.
        */
-      containers.sort((a, b) => {
-        const aHeight =
-          a === document.scrollingElement
-            ? Math.max(
-                document.body.scrollHeight,
-                document.documentElement.scrollHeight
-              )
-            : a.scrollHeight;
-
-        const bHeight =
-          b === document.scrollingElement
-            ? Math.max(
-                document.body.scrollHeight,
-                document.documentElement.scrollHeight
-              )
-            : b.scrollHeight;
-
-        return bHeight - aHeight;
-      });
-
-      /*
-       * Try up to three possible scrolling containers.
-       */
-      for (
-        const container of containers.slice(0, 3)
-      ) {
-        await graduallyScrollContainer(
-          container
+      await new Promise(resolve => {
+        setTimeout(
+          resolve,
+          150
         );
-
-        discoverEntries({
-          save: true
-        });
-      }
+      });
 
       /*
-       * Give the page a final opportunity to process its
-       * loading sentinel.
+       * Full page reload.
+       *
+       * Panopto itself will rebuild the recording list,
+       * including lazy-loaded recordings.
        */
-      await sleep(500);
-
-      discoverEntries({
-        save: true
-      });
+      window.location.reload();
 
     } catch (error) {
-      /*
-       * Do not allow a failed lazy-load attempt to destroy
-       * the extension.
-       */
-      console.warn(
-        "Panopto Course Filter: lazy loading pass failed.",
+      console.error(
+        "Panopto Course Filter: video reload failed.",
         error
       );
-    } finally {
-      loadingMore = false;
-    }
-  }
 
-  /*
-   * =========================================================
-   * SELECTION CHANGE
-   * =========================================================
-   */
+      reloadInProgress = false;
 
-  async function refreshAfterSelectionChange() {
-    if (
-      destroyed
-    ) {
-      return;
-    }
-
-    /*
-     * First restore the complete list.
-     */
-    showEverything();
-
-    /*
-     * Then force Panopto's lazy loader to run.
-     */
-    await loadMoreRecordings();
-
-    /*
-     * Now apply the new selection.
-     */
-    if (
-      state.enabled &&
-      state.selected.length > 0
-    ) {
-      applyFilter();
-    } else {
-      showEverything();
-
-      updatePanel(
-        findRecordingCards().length
-      );
+      if (button) {
+        button.disabled = false;
+        button.textContent =
+          "↻ Reload Videos";
+      }
     }
   }
 
@@ -1190,7 +747,11 @@
         Filter recordings
       </label>
 
-      <div class="pcf-course-list-actions">
+      <div class="pcf-video-actions">
+        <button id="pcf-reload-videos">
+          ↻ Reload Videos
+        </button>
+
         <button id="pcf-rediscover">
           ↻ Forget & Rediscover
         </button>
@@ -1217,32 +778,51 @@
 
     document.getElementById(
       "pcf-close"
-    ).onclick = () => {
-      panel.classList.add(
-        "pcf-hidden"
-      );
-    };
+    ).onclick =
+      () => {
+        panel.classList.add(
+          "pcf-hidden"
+        );
+      };
 
     /*
-     * ENABLE/DISABLE
+     * FILTER ENABLE/DISABLE
      */
 
-    const enabledCheckbox =
+    const enabled =
       document.getElementById(
         "pcf-enabled"
       );
 
-    enabledCheckbox.checked =
+    enabled.checked =
       state.enabled;
 
-    enabledCheckbox.onchange =
+    enabled.onchange =
       async event => {
         state.enabled =
           event.target.checked;
 
         await saveState();
 
-        await refreshAfterSelectionChange();
+        /*
+         * If filtering was disabled, immediately show all
+         * currently loaded recordings.
+         */
+        if (!state.enabled) {
+          clearCardFiltering();
+
+          updatePanel(
+            findRecordingCards().length
+          );
+
+          return;
+        }
+
+        /*
+         * If filtering was enabled, apply it to everything
+         * currently loaded.
+         */
+        applyFilter();
       };
 
     /*
@@ -1251,9 +831,10 @@
 
     document.getElementById(
       "pcf-search"
-    ).oninput = () => {
-      updatePanel();
-    };
+    ).oninput =
+      () => {
+        updatePanel();
+      };
 
     /*
      * NONE
@@ -1267,7 +848,14 @@
 
         await saveState();
 
-        await refreshAfterSelectionChange();
+        /*
+         * Do not hide anything when nothing is selected.
+         */
+        clearCardFiltering();
+
+        updatePanel(
+          findRecordingCards().length
+        );
       };
 
     /*
@@ -1295,7 +883,7 @@
 
         await saveState();
 
-        await refreshAfterSelectionChange();
+        applyFilter();
       };
 
     /*
@@ -1311,11 +899,11 @@
 
         await saveState();
 
-        await refreshAfterSelectionChange();
+        applyFilter();
       };
 
     /*
-     * SAVE SELECTED
+     * SAVE CURRENT
      */
 
     document.getElementById(
@@ -1346,29 +934,14 @@
       };
 
     /*
-     * SCAN
+     * RELOAD VIDEOS
      */
 
     document.getElementById(
-      "pcf-refresh"
+      "pcf-reload-videos"
     ).onclick =
       async () => {
-        const button =
-          document.getElementById(
-            "pcf-refresh"
-          );
-
-        button.disabled = true;
-        button.textContent =
-          "↻ Scanning...";
-
-        try {
-          await refreshAfterSelectionChange();
-        } finally {
-          button.disabled = false;
-          button.textContent =
-            "↻ Scan";
-        }
+        await reloadVideos();
       };
 
     /*
@@ -1390,48 +963,46 @@
 
         try {
           /*
-           * Forget discovered courses AND selections.
+           * Forget only the discovered course list.
+           *
+           * We intentionally leave selected/current classes
+           * alone because the user may want to rediscover
+           * while retaining their choices.
            */
           state.entries = [];
-          state.selected = [];
-          state.currentClasses = [];
-          state.collapsedSemesters = {};
 
           await saveState();
 
           /*
-           * Make sure Panopto has its full DOM again.
-           */
-          showEverything();
-
-          /*
-           * Scan current content.
+           * Scan the current page.
            */
           discoverEntries({
             replace: true,
             save: true
           });
 
-          /*
-           * Force additional Panopto content to load.
-           */
-          await loadMoreRecordings();
-
-          /*
-           * Scan everything that appeared.
-           */
-          discoverEntries({
-            save: true
-          });
-
           updatePanel();
 
-          showEverything();
         } finally {
           button.disabled = false;
           button.textContent =
             "↻ Forget & Rediscover";
         }
+      };
+
+    /*
+     * SCAN
+     */
+
+    document.getElementById(
+      "pcf-refresh"
+    ).onclick =
+      () => {
+        discoverEntries({
+          save: true
+        });
+
+        applyFilter();
       };
   }
 
@@ -1453,15 +1024,15 @@
       return;
     }
 
-    const searchInput =
+    const searchElement =
       document.getElementById(
         "pcf-search"
       );
 
     const search =
       normalize(
-        searchInput
-          ? searchInput.value
+        searchElement
+          ? searchElement.value
           : ""
       ).toUpperCase();
 
@@ -1482,29 +1053,31 @@
         );
       })
       .forEach(entry => {
-        const group =
+        const semester =
           semesterKey(entry);
 
-        if (!groups.has(group)) {
+        if (
+          !groups.has(semester)
+        ) {
           groups.set(
-            group,
+            semester,
             []
           );
         }
 
         groups
-          .get(group)
+          .get(semester)
           .push(entry);
       });
 
     groups.forEach(
       (entries, semester) => {
-        const semesterHeader =
+        const header =
           document.createElement(
             "div"
           );
 
-        semesterHeader.className =
+        header.className =
           "pcf-semester-header";
 
         const collapsed =
@@ -1513,7 +1086,7 @@
               semester
             ];
 
-        semesterHeader.innerHTML = `
+        header.innerHTML = `
           <button class="pcf-semester-toggle">
             ${collapsed ? "▶" : "▼"}
           </button>
@@ -1526,27 +1099,27 @@
         `;
 
         list.appendChild(
-          semesterHeader
+          header
         );
 
-        const semesterCourses =
+        const courses =
           document.createElement(
             "div"
           );
 
-        semesterCourses.className =
+        courses.className =
           "pcf-semester-courses";
 
         if (collapsed) {
-          semesterCourses.style.display =
+          courses.style.display =
             "none";
         }
 
         /*
-         * Collapse/expand
+         * Collapse
          */
 
-        semesterHeader
+        header
           .querySelector(
             ".pcf-semester-toggle"
           )
@@ -1568,10 +1141,10 @@
           };
 
         /*
-         * Select all semester courses
+         * All
          */
 
-        semesterHeader
+        header
           .querySelector(
             ".pcf-semester-all"
           )
@@ -1615,11 +1188,11 @@
 
             await saveState();
 
-            await refreshAfterSelectionChange();
+            applyFilter();
           };
 
         /*
-         * Individual courses
+         * Courses
          */
 
         entries.forEach(entry => {
@@ -1643,10 +1216,6 @@
             state.selected.includes(
               entry.key
             );
-
-          /*
-           * Saved current class
-           */
 
           if (
             state.currentClasses.includes(
@@ -1684,13 +1253,11 @@
               await saveState();
 
               /*
-               * IMPORTANT:
-               *
-               * Do NOT merely filter the videos currently
-               * present. Restore everything and run the
-               * Panopto lazy loader again.
+               * Selection changes only affect recordings
+               * already loaded. Use "Reload Videos" when
+               * you want Panopto to fetch the complete list.
                */
-              await refreshAfterSelectionChange();
+              applyFilter();
             };
 
           label.append(
@@ -1724,19 +1291,19 @@
             );
           }
 
-          semesterCourses.appendChild(
+          courses.appendChild(
             label
           );
         });
 
         list.appendChild(
-          semesterCourses
+          courses
         );
       }
     );
 
     /*
-     * Recording count
+     * Count recordings
      */
 
     if (
@@ -1825,22 +1392,23 @@
     button.textContent =
       "🎓 Courses";
 
-    button.onclick = () => {
-      const panel =
-        document.getElementById(
-          "pcf-panel"
+    button.onclick =
+      () => {
+        const panel =
+          document.getElementById(
+            "pcf-panel"
+          );
+
+        if (!panel) {
+          return;
+        }
+
+        panel.classList.remove(
+          "pcf-hidden"
         );
 
-      if (!panel) {
-        return;
-      }
-
-      panel.classList.remove(
-        "pcf-hidden"
-      );
-
-      updatePanel();
-    };
+        updatePanel();
+      };
 
     document.body.appendChild(
       button
@@ -1849,12 +1417,14 @@
 
   /*
    * =========================================================
-   * BACKGROUND COURSE DISCOVERY
+   * BACKGROUND DISCOVERY
    * =========================================================
    */
 
   function scheduleDiscovery() {
-    if (destroyed) {
+    if (
+      destroyed
+    ) {
       return;
     }
 
@@ -1864,7 +1434,9 @@
 
     scanTimer =
       setTimeout(() => {
-        if (destroyed) {
+        if (
+          destroyed
+        ) {
           return;
         }
 
@@ -1873,12 +1445,12 @@
         });
 
         updatePanel();
-      }, 600);
+      }, 500);
   }
 
   /*
    * =========================================================
-   * INITIALIZATION
+   * INIT
    * =========================================================
    */
 
@@ -1897,47 +1469,34 @@
     createLauncher();
 
     /*
-     * Merge currently visible courses into remembered
-     * courses.
+     * Add whatever is currently visible to the remembered
+     * course list.
      */
     discoverEntries({
       save: true
     });
 
     /*
-     * Start with everything visible.
-     *
-     * This is important because hiding cards too early can
-     * interfere with Panopto's lazy loader.
+     * Apply the saved filter to the current recordings.
      */
-    showEverything();
+    applyFilter();
 
     /*
-     * Watch for dynamically-created Panopto content.
+     * Keep discovering classes as Panopto adds content.
      */
     const observer =
       new MutationObserver(() => {
         scheduleDiscovery();
       });
 
-    try {
-      observer.observe(
-        document.body,
-        {
-          childList: true,
-          subtree: true
-        }
-      );
-    } catch (error) {
-      console.warn(
-        "Panopto Course Filter: could not start DOM observer.",
-        error
-      );
-    }
+    observer.observe(
+      document.body,
+      {
+        childList: true,
+        subtree: true
+      }
+    );
 
-    /*
-     * Remember courses as the user naturally scrolls.
-     */
     window.addEventListener(
       "scroll",
       () => {
@@ -1948,38 +1507,7 @@
       }
     );
 
-    /*
-     * Let Panopto finish its own initialization first.
-     */
-    setTimeout(
-      async () => {
-        if (destroyed) {
-          return;
-        }
-
-        await loadMoreRecordings();
-
-        if (
-          destroyed
-        ) {
-          return;
-        }
-
-        if (
-          state.enabled &&
-          state.selected.length > 0
-        ) {
-          applyFilter();
-        } else {
-          showEverything();
-
-          updatePanel(
-            findRecordingCards().length
-          );
-        }
-      },
-      1500
-    );
+    updatePanel();
   }
 
   /*
