@@ -2,7 +2,7 @@
   position: fixed;
   top: 80px;
   right: 18px;
-  width: 340px;
+  width: 350px;
   max-height: calc(100vh - 110px);
 
   z-index: 2147483647;
@@ -26,9 +26,7 @@
 }
 
 /*
- * =========================================================
  * HEADER
- * =========================================================
  */
 
 .pcf-header {
@@ -56,9 +54,7 @@
 }
 
 /*
- * =========================================================
  * DESCRIPTION
- * =========================================================
  */
 
 .pcf-description {
@@ -70,9 +66,7 @@
 }
 
 /*
- * =========================================================
  * SEARCH
- * =========================================================
  */
 
 #pcf-search {
@@ -91,9 +85,7 @@
 }
 
 /*
- * =========================================================
  * GLOBAL BUTTONS
- * =========================================================
  */
 
 .pcf-global-buttons {
@@ -101,7 +93,7 @@
 
   gap: 6px;
 
-  padding: 2px 14px 8px;
+  padding: 2px 14px 7px;
 }
 
 .pcf-global-buttons button {
@@ -125,9 +117,39 @@
 }
 
 /*
- * =========================================================
+ * EXPAND / COLLAPSE ALL
+ */
+
+.pcf-semester-actions {
+  display: flex;
+
+  gap: 6px;
+
+  padding: 0 14px 8px;
+}
+
+.pcf-semester-actions button {
+  flex: 1;
+
+  border: 1px solid #bbb;
+
+  background: #fafafa;
+
+  border-radius: 6px;
+
+  padding: 6px 5px;
+
+  cursor: pointer;
+
+  font-size: 12px;
+}
+
+.pcf-semester-actions button:hover {
+  background: #eeeeee;
+}
+
+/*
  * CURRENT CLASSES
- * =========================================================
  */
 
 .pcf-current-box {
@@ -177,9 +199,7 @@
 }
 
 /*
- * =========================================================
- * SEMESTER BUTTONS
- * =========================================================
+ * CURRENT SEMESTER
  */
 
 .pcf-buttons {
@@ -207,9 +227,7 @@
 }
 
 /*
- * =========================================================
  * TOGGLES
- * =========================================================
  */
 
 .pcf-toggle {
@@ -227,9 +245,7 @@
 }
 
 /*
- * =========================================================
  * VIDEO ACTIONS
- * =========================================================
  */
 
 .pcf-video-actions {
@@ -266,6 +282,10 @@
   cursor: wait;
 }
 
+#pcf-reset-names {
+  color: #765f00;
+}
+
 #pcf-reset {
   grid-column: 1 / -1;
 
@@ -279,9 +299,7 @@
 }
 
 /*
- * =========================================================
  * COURSE LIST
- * =========================================================
  */
 
 #pcf-course-list {
@@ -293,9 +311,7 @@
 }
 
 /*
- * =========================================================
  * SEMESTER HEADER
- * =========================================================
  */
 
 .pcf-semester-header {
@@ -373,13 +389,21 @@
 }
 
 /*
- * =========================================================
  * COURSES
- * =========================================================
  */
 
 .pcf-semester-courses {
   background: white;
+}
+
+.pcf-course-row {
+  display: flex;
+
+  align-items: stretch;
+
+  width: 100%;
+
+  border-bottom: 1px solid #f1f1f1;
 }
 
 .pcf-course {
@@ -389,11 +413,13 @@
 
   gap: 8px;
 
-  padding: 8px 14px;
+  flex: 1;
+
+  min-width: 0;
+
+  padding: 8px 6px 8px 14px;
 
   cursor: pointer;
-
-  border-bottom: 1px solid #f1f1f1;
 }
 
 .pcf-course:hover {
@@ -402,6 +428,38 @@
 
 .pcf-course input {
   flex: 0 0 auto;
+}
+
+.pcf-course-name {
+  display: flex;
+
+  flex-direction: column;
+
+  min-width: 0;
+
+  overflow: hidden;
+}
+
+.pcf-course-display-name {
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+
+  white-space: nowrap;
+}
+
+.pcf-course-original-name {
+  color: #999;
+
+  font-size: 10px;
+
+  margin-top: 1px;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+
+  white-space: nowrap;
 }
 
 .pcf-course.pcf-current-class {
@@ -418,12 +476,40 @@
   font-size: 13px;
 
   margin-left: auto;
+
+  flex: 0 0 auto;
 }
 
 /*
- * =========================================================
+ * RENAME BUTTON
+ */
+
+.pcf-rename {
+  width: 34px;
+
+  flex: 0 0 34px;
+
+  border: 0;
+
+  border-left: 1px solid #eee;
+
+  background: transparent;
+
+  color: #777;
+
+  cursor: pointer;
+
+  font-size: 15px;
+}
+
+.pcf-rename:hover {
+  background: #eeeeee;
+
+  color: #333;
+}
+
+/*
  * FOOTER
- * =========================================================
  */
 
 .pcf-footer {
@@ -489,9 +575,7 @@
 }
 
 /*
- * =========================================================
  * LAUNCHER
- * =========================================================
  */
 
 #pcf-launcher {
@@ -525,14 +609,11 @@
 }
 
 /*
- * =========================================================
  * FILTERED RECORDINGS
- * =========================================================
  *
- * This class intentionally does NOT use display:none.
- *
- * Panopto needs the recording cards to remain part of the
- * layout for its lazy-loading/infinite-scroll system.
+ * Do NOT use display:none here.
+ * Panopto needs the cards to remain in the layout so that
+ * its lazy-loading/infinite-scroll mechanism can continue.
  */
 
 .pcf-filtered-out {
