@@ -2,7 +2,8 @@
   position: fixed;
   top: 80px;
   right: 18px;
-  width: 350px;
+
+  width: 320px;
   max-height: calc(100vh - 110px);
 
   z-index: 2147483647;
@@ -18,6 +19,9 @@
   font-family: Arial, sans-serif;
   font-size: 14px;
 
+  display: flex;
+  flex-direction: column;
+
   overflow: hidden;
 }
 
@@ -25,14 +29,16 @@
   display: none;
 }
 
-/*
- * HEADER
- */
+/* ---------------------------------------------------------
+   HEADER
+   --------------------------------------------------------- */
 
 .pcf-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+
+  flex: 0 0 auto;
 
   padding: 13px 14px;
 
@@ -53,24 +59,26 @@
   cursor: pointer;
 }
 
-/*
- * DESCRIPTION
- */
+/* ---------------------------------------------------------
+   DESCRIPTION
+   --------------------------------------------------------- */
 
 .pcf-description {
+  flex: 0 0 auto;
+
   padding: 10px 14px 5px;
 
   color: #666;
-
-  line-height: 1.35;
 }
 
-/*
- * SEARCH
- */
+/* ---------------------------------------------------------
+   SEARCH
+   --------------------------------------------------------- */
 
 #pcf-search {
   box-sizing: border-box;
+
+  flex: 0 0 auto;
 
   width: calc(100% - 28px);
 
@@ -80,87 +88,22 @@
 
   border: 1px solid #bbb;
   border-radius: 7px;
-
-  font-size: 14px;
 }
 
-/*
- * GLOBAL BUTTONS
- */
-
-.pcf-global-buttons {
-  display: flex;
-
-  gap: 6px;
-
-  padding: 2px 14px 7px;
-}
-
-.pcf-global-buttons button {
-  flex: 1;
-
-  border: 1px solid #bbb;
-
-  background: white;
-
-  border-radius: 6px;
-
-  padding: 7px 8px;
-
-  cursor: pointer;
-
-  font-weight: 600;
-}
-
-.pcf-global-buttons button:hover {
-  background: #f2f2f2;
-}
-
-/*
- * EXPAND / COLLAPSE ALL
- */
-
-.pcf-semester-actions {
-  display: flex;
-
-  gap: 6px;
-
-  padding: 0 14px 8px;
-}
-
-.pcf-semester-actions button {
-  flex: 1;
-
-  border: 1px solid #bbb;
-
-  background: #fafafa;
-
-  border-radius: 6px;
-
-  padding: 6px 5px;
-
-  cursor: pointer;
-
-  font-size: 12px;
-}
-
-.pcf-semester-actions button:hover {
-  background: #eeeeee;
-}
-
-/*
- * CURRENT CLASSES
- */
+/* ---------------------------------------------------------
+   CURRENT CLASSES
+   --------------------------------------------------------- */
 
 .pcf-current-box {
-  margin: 0 14px 8px;
+  flex: 0 0 auto;
+
+  margin: 4px 14px 8px;
 
   padding: 9px;
 
-  background: #fff9df;
+  background: #f7f9f7;
 
-  border: 1px solid #ead98c;
-
+  border: 1px solid #ddd;
   border-radius: 8px;
 }
 
@@ -168,22 +111,18 @@
   margin-bottom: 7px;
 
   font-weight: bold;
-
-  color: #665600;
+  font-size: 13px;
 }
 
 .pcf-current-buttons {
   display: flex;
-
   flex-wrap: wrap;
-
   gap: 5px;
 }
 
 .pcf-current-buttons button {
-  border: 1px solid #c7b66b;
-
-  background: #fffdf1;
+  border: 1px solid #bbb;
+  background: white;
 
   border-radius: 6px;
 
@@ -195,22 +134,26 @@
 }
 
 .pcf-current-buttons button:hover {
-  background: #fff7cc;
+  background: #f0f0f0;
 }
 
-/*
- * CURRENT SEMESTER
- */
+/* ---------------------------------------------------------
+   TOP BUTTONS
+   --------------------------------------------------------- */
 
 .pcf-buttons {
   display: flex;
+  flex-wrap: wrap;
 
   gap: 6px;
+
+  flex: 0 0 auto;
 
   padding: 3px 14px 8px;
 }
 
-.pcf-buttons button {
+.pcf-buttons button,
+#pcf-refresh {
   border: 1px solid #bbb;
 
   background: white;
@@ -222,154 +165,113 @@
   cursor: pointer;
 }
 
-.pcf-buttons button:hover {
-  background: #f2f2f2;
+.pcf-buttons button:hover,
+#pcf-refresh:hover {
+  background: #f0f0f0;
 }
 
-/*
- * TOGGLES
- */
+/* ---------------------------------------------------------
+   FILTER TOGGLE
+   --------------------------------------------------------- */
 
 .pcf-toggle {
   display: block;
 
-  padding: 5px 14px;
+  flex: 0 0 auto;
 
-  cursor: pointer;
-
-  color: #444;
+  padding: 5px 14px 8px;
 }
 
-.pcf-toggle input {
-  margin-right: 7px;
-}
+/* ---------------------------------------------------------
+   COURSE LIST
+   --------------------------------------------------------- */
 
 /*
- * VIDEO ACTIONS
- */
-
-.pcf-video-actions {
-  display: grid;
-
-  grid-template-columns: 1fr 1fr;
-
-  gap: 5px;
-
-  padding: 7px 14px 9px;
-}
-
-.pcf-video-actions button {
-  border: 1px solid #aaa;
-
-  background: white;
-
-  border-radius: 6px;
-
-  padding: 7px 5px;
-
-  cursor: pointer;
-
-  font-size: 11px;
-}
-
-.pcf-video-actions button:hover {
-  background: #f1f1f1;
-}
-
-.pcf-video-actions button:disabled {
-  opacity: .55;
-
-  cursor: wait;
-}
-
-#pcf-reset-names {
-  color: #765f00;
-}
-
-#pcf-reset {
-  grid-column: 1 / -1;
-
-  color: #a12626;
-
-  border-color: #d6a3a3;
-}
-
-#pcf-reset:hover {
-  background: #fff0f0;
-}
-
-/*
- * COURSE LIST
+ * The important part:
+ *
+ * The panel is a flex column and ONLY this area scrolls.
+ *
+ * This means:
+ * - header stays visible
+ * - search stays visible
+ * - buttons stay visible
+ * - semester/course list can be very long
+ * - footer stays visible
  */
 
 #pcf-course-list {
-  max-height: 45vh;
+  flex: 1 1 auto;
+
+  min-height: 0;
 
   overflow-y: auto;
+  overflow-x: hidden;
 
   border-top: 1px solid #eee;
+
+  /*
+   * Makes scrolling work nicely on touchpads/mobile.
+   */
+  overscroll-behavior: contain;
+
+  /*
+   * Always gives a little room for the scrollbar.
+   */
+  padding-bottom: 4px;
 }
 
-/*
- * SEMESTER HEADER
- */
+/* Better scrollbar */
+
+#pcf-course-list::-webkit-scrollbar {
+  width: 9px;
+}
+
+#pcf-course-list::-webkit-scrollbar-track {
+  background: #f3f3f3;
+}
+
+#pcf-course-list::-webkit-scrollbar-thumb {
+  background: #bbb;
+
+  border-radius: 5px;
+
+  border: 2px solid #f3f3f3;
+}
+
+#pcf-course-list::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
+/* ---------------------------------------------------------
+   SEMESTER HEADINGS
+   --------------------------------------------------------- */
 
 .pcf-semester-header {
-  display: flex;
+  position: sticky;
 
+  top: 0;
+
+  z-index: 2;
+
+  display: flex;
   align-items: center;
 
   gap: 5px;
 
   padding: 7px 8px;
 
-  background: #f4f4f4;
+  background: #eef4ef;
 
-  border-bottom: 1px solid #ddd;
-
-  position: sticky;
-
-  top: 0;
-
-  z-index: 2;
+  border-bottom: 1px solid #d5ddd6;
 }
 
-.pcf-semester-toggle {
-  width: 25px;
-
-  border: 0;
-
-  background: transparent;
-
-  cursor: pointer;
-
-  font-size: 12px;
-}
-
-.pcf-semester-name {
-  display: flex;
-
-  align-items: center;
-
-  gap: 6px;
-
+.pcf-semester-header strong {
   flex: 1;
 
-  min-width: 0;
+  font-size: 13px;
 }
 
-.pcf-semester-name strong {
-  white-space: nowrap;
-}
-
-.pcf-semester-count {
-  color: #777;
-
-  font-size: 11px;
-
-  font-weight: normal;
-}
-
+.pcf-semester-toggle,
 .pcf-semester-all {
   border: 1px solid #bbb;
 
@@ -377,47 +279,42 @@
 
   border-radius: 5px;
 
-  padding: 4px 7px;
-
   cursor: pointer;
+}
+
+.pcf-semester-toggle {
+  width: 25px;
+  height: 24px;
+
+  padding: 0;
+}
+
+.pcf-semester-all {
+  padding: 4px 7px;
 
   font-size: 11px;
 }
 
+.pcf-semester-toggle:hover,
 .pcf-semester-all:hover {
-  background: #eee;
+  background: #f0f0f0;
 }
 
-/*
- * COURSES
- */
+/* ---------------------------------------------------------
+   COURSES
+   --------------------------------------------------------- */
 
 .pcf-semester-courses {
-  background: white;
-}
-
-.pcf-course-row {
-  display: flex;
-
-  align-items: stretch;
-
-  width: 100%;
-
-  border-bottom: 1px solid #f1f1f1;
+  display: block;
 }
 
 .pcf-course {
   display: flex;
-
   align-items: center;
 
   gap: 8px;
 
-  flex: 1;
-
-  min-width: 0;
-
-  padding: 8px 6px 8px 14px;
+  padding: 8px 14px;
 
   cursor: pointer;
 }
@@ -430,100 +327,40 @@
   flex: 0 0 auto;
 }
 
-.pcf-course-name {
-  display: flex;
-
-  flex-direction: column;
-
-  min-width: 0;
-
-  overflow: hidden;
-}
-
-.pcf-course-display-name {
-  overflow: hidden;
-
-  text-overflow: ellipsis;
-
-  white-space: nowrap;
-}
-
-.pcf-course-original-name {
-  color: #999;
-
-  font-size: 10px;
-
-  margin-top: 1px;
-
-  overflow: hidden;
-
-  text-overflow: ellipsis;
-
-  white-space: nowrap;
-}
-
 .pcf-course.pcf-current-class {
-  background: #fffdf0;
+  background: #fffbea;
 }
 
 .pcf-course.pcf-current-class:hover {
-  background: #fff8d9;
+  background: #fff5d6;
 }
 
 .pcf-star {
-  color: #d0a500;
+  color: #d6a500;
 
   font-size: 13px;
 
   margin-left: auto;
-
-  flex: 0 0 auto;
 }
 
-/*
- * RENAME BUTTON
- */
-
-.pcf-rename {
-  width: 34px;
-
-  flex: 0 0 34px;
-
-  border: 0;
-
-  border-left: 1px solid #eee;
-
-  background: transparent;
-
-  color: #777;
-
-  cursor: pointer;
-
-  font-size: 15px;
-}
-
-.pcf-rename:hover {
-  background: #eeeeee;
-
-  color: #333;
-}
-
-/*
- * FOOTER
- */
+/* ---------------------------------------------------------
+   FOOTER
+   --------------------------------------------------------- */
 
 .pcf-footer {
   display: flex;
-
   justify-content: space-between;
-
   align-items: center;
+
+  flex: 0 0 auto;
 
   gap: 8px;
 
   padding: 9px 14px;
 
   border-top: 1px solid #ddd;
+
+  background: white;
 
   color: #666;
 
@@ -533,56 +370,25 @@
 #pcf-count {
   min-width: 0;
 
-  line-height: 1.45;
-}
+  overflow: hidden;
 
-.pcf-status {
-  color: #333;
-
-  font-weight: 600;
-
-  margin-bottom: 2px;
-}
-
-.pcf-discovered-count {
-  color: #888;
-
-  font-size: 11px;
+  text-overflow: ellipsis;
 }
 
 .pcf-saved-count {
-  color: #8a7000;
+  margin-top: 3px;
 
-  font-size: 11px;
+  color: #9a7600;
 }
 
-#pcf-refresh {
-  flex: 0 0 auto;
-
-  border: 1px solid #bbb;
-
-  background: white;
-
-  border-radius: 6px;
-
-  padding: 6px 9px;
-
-  cursor: pointer;
-}
-
-#pcf-refresh:hover {
-  background: #f2f2f2;
-}
-
-/*
- * LAUNCHER
- */
+/* ---------------------------------------------------------
+   LAUNCHER
+   --------------------------------------------------------- */
 
 #pcf-launcher {
   position: fixed;
 
   right: 18px;
-
   bottom: 18px;
 
   z-index: 2147483646;
@@ -606,20 +412,4 @@
 
 #pcf-launcher:hover {
   background: #336a40;
-}
-
-/*
- * FILTERED RECORDINGS
- *
- * Do NOT use display:none here.
- * Panopto needs the cards to remain in the layout so that
- * its lazy-loading/infinite-scroll mechanism can continue.
- */
-
-.pcf-filtered-out {
-  visibility: hidden !important;
-
-  opacity: 0 !important;
-
-  pointer-events: none !important;
 }
