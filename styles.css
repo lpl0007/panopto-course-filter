@@ -90,7 +90,9 @@
   border: 1px solid #bbb;
   background: white;
   border-radius: 6px;
+
   padding: 5px 7px;
+
   cursor: pointer;
   font-size: 12px;
 }
@@ -99,7 +101,6 @@
   display: flex;
   gap: 6px;
   padding: 3px 14px 8px;
-  flex-wrap: wrap;
 }
 
 .pcf-buttons button,
@@ -121,15 +122,19 @@
 /*
  * COURSE LIST
  *
- * This is the only area that gets scrolling.
+ * Keep everything above and below this section at its
+ * original size. Only the list itself scrolls.
  */
 #pcf-course-list {
+  height: 45vh;
   max-height: 45vh;
 
-  overflow-y: auto;
+  overflow-y: scroll;
   overflow-x: hidden;
 
   border-top: 1px solid #eee;
+
+  box-sizing: border-box;
 }
 
 /* Scrollbar */
@@ -139,16 +144,16 @@
 }
 
 #pcf-course-list::-webkit-scrollbar-track {
-  background: #f3f3f3;
+  background: #f1f1f1;
 }
 
 #pcf-course-list::-webkit-scrollbar-thumb {
-  background: #bbb;
+  background: #aaa;
   border-radius: 4px;
 }
 
 #pcf-course-list::-webkit-scrollbar-thumb:hover {
-  background: #999;
+  background: #888;
 }
 
 /* Semester headings */
@@ -156,7 +161,6 @@
 .pcf-semester-header {
   display: flex;
   align-items: center;
-  gap: 5px;
 
   padding: 7px 8px;
 
@@ -180,7 +184,10 @@
 .pcf-semester-toggle {
   width: 25px;
   height: 24px;
+
   padding: 0;
+
+  margin-right: 5px;
 }
 
 .pcf-semester-all {
@@ -210,7 +217,6 @@
 
 .pcf-star {
   color: #d6a500;
-  font-size: 13px;
 }
 
 /* Footer */
