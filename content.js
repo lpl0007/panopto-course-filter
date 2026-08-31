@@ -7,6 +7,7 @@
     entries: [],
     selected: [],
     currentClasses: [],
+    collapsedSemesters: {},
     enabled: true,
     collapsedSemesters: {},
     onlySelectedSemesters: false,
@@ -42,88 +43,218 @@
   const REVERSE_RE =
     /\b([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\s*\(\s*(Fall|Spring|Summer)\s+(\d{4})\s*\)/gi;
 
-  function normalize(text) {
-    return (text || "")
-      .replace(/\s+/g, " ")
-      .trim();
+  async function safeStorageGet(key) {
+    if (!extensionAlive()) {
+      return null;
+    }
+
+    try {
+      return await chrome.storage.local.get(key);
+    } catch (error) {
+      if (
+        String(error?.message || error)
+          .toLowerCase()
+          .includes("context invalidated")
+      ) {
+        return null;
+      }
+
+      console.warn(
+        "Panopto Course Filter: storage read failed",
+        error
+      );
+
+      return null;
+    }
   }
 
-  function parseEntries(text) {
-    const results = [];
+  async function safeStorageSet(data) {
+    if (!extensionAlive()) {
+      return false;
+    }
 
-    text = normalize(text);
+    try {
+      await chrome.storage.local.set(data);
+      return true;
+    } catch (error) {
+      if (
+        String(error?.message || error)
+          .toLowerCase()
+          .includes("context invalidated")
+      ) {
+        return false;
+      }
 
-    let match;
+      console.warn(
+        "Panopto Course Filter: storage write failed",
+        error
+      );
 
-    FORWARD_RE.lastIndex = 0;
+      return false;
+    }
+  }
 
-    while ((match = FORWARD_RE.exec(text))) {
-      const term =
-        match[1].charAt(0).toUpperCase() +
-        match[1].slice(1).toLowerCase();
+  // ============================================================
+  // COURSE PARSING
+  // Auburn: Fall / Spring / Summer only.
+  // ============================================================
 
-      const year = match[2];
+  const COURSE_PATTERNS = [
+    /\b(Fall|Spring|Summer)\s+(\d{4})\s*[-–—]\s*([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\b/gi,
 
-      const subject =
-        match[3].toUpperCase();
+    /\b([A-Z]{2,8})\s*[-–—]\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\s*[-–—]\s*(Fall|Spring|Summer)\s+(\d{4})\b/gi,
 
-      const number = match[4];
+    /\b([A-Z]{2,8})\s+(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\s*\(\s*(Fall|Spring|Summer)\s+(\d{4})\s*\)/gi
+  ];
 
       const section =
         match[5]
           ? match[5].toUpperCase()
           : "";
 
-      const course =
-        `${subject}-${number}${section ? "-" + section : ""}`;
+  function parseCourses(text) {
+    text = normalize(text);
 
-      results.push({
-        key: `${term} ${year}|${course}`,
-        term,
-        year,
-        course
-      });
+    if (!text) {
+      return [];
     }
 
-    REVERSE_RE.lastIndex = 0;
+    const found = new Map();
 
-    while ((match = REVERSE_RE.exec(text))) {
-      const subject =
-        match[1].toUpperCase();
+    for (const pattern of COURSE_PATTERNS) {
+      pattern.lastIndex = 0;
 
-      const number = match[2];
+      let m;
+
+      while ((m = pattern.exec(text))) {
+        let term;
+        let year;
+        let subject;
+        let number;
+        let section;
+
+        if (/Fall|Spring|Summer/i.test(m[1])) {
+          term =
+            m[1][0].toUpperCase() +
+            m[1].slice(1).toLowerCase();
+
+          year = m[2];
+          subject = m[3].toUpperCase();
+          number = m[4];
+          section = m[5] || "";
+        } else {
+          subject = m[1].toUpperCase();
+          number = m[2];
+          section = m[3] || "";
+
+          term =
+            m[4][0].toUpperCase() +
+            m[4].slice(1).toLowerCase();
+
+          year = m[5];
+        }
+
+        const course =
+          `${subject}-${number}${section ? "-" + section.toUpperCase() : ""}`;
+
+        const entry = {
+          key: `${term} ${year}|${course}`,
+          term,
+          year,
+          course
+        };
+
+        found.set(entry.key, entry);
+      }
+    }
 
       const section =
         match[3]
           ? match[3].toUpperCase()
           : "";
 
-      const term =
-        match[4].charAt(0).toUpperCase() +
-        match[4].slice(1).toLowerCase();
+  function sortEntries(entries) {
+    const order = {
+      Fall: 3,
+      Summer: 2,
+      Spring: 1
+    };
 
-      const year = match[5];
+    return [...entries].sort((a, b) => {
+      const yearDiff =
+        Number(b.year) - Number(a.year);
 
-      const course =
-        `${subject}-${number}${section ? "-" + section : ""}`;
+      if (yearDiff) {
+        return yearDiff;
+      }
 
-      results.push({
-        key: `${term} ${year}|${course}`,
-        term,
-        year,
-        course
-      });
-    }
+      const termDiff =
+        (order[b.term] || 0) -
+        (order[a.term] || 0);
 
-    return results;
+      if (termDiff) {
+        return termDiff;
+      }
+
+      return a.course.localeCompare(b.course);
+    });
   }
 
   function entryLabel(entry) {
     return `${entry.term} ${entry.year} — ${entry.course}`;
   }
 
-  function semesterKey(entry) {
-    return `${entry.term} ${entry.year}`;
+  // ============================================================
+  // STORAGE
+  // ============================================================
+
+  async function loadState() {
+    const result =
+      await safeStorageGet(STORAGE_KEY);
+
+    if (result?.[STORAGE_KEY]) {
+      Object.assign(
+        state,
+        result[STORAGE_KEY]
+      );
+    }
+
+    state.entries =
+      Array.isArray(state.entries)
+        ? state.entries
+        : [];
+
+    state.selected =
+      Array.isArray(state.selected)
+        ? state.selected
+        : [];
+
+    state.currentClasses =
+      Array.isArray(state.currentClasses)
+        ? state.currentClasses
+        : [];
+
+    state.collapsedSemesters =
+      state.collapsedSemesters || {};
+
+    state.entries =
+      state.entries.filter(entry =>
+        ["Fall", "Spring", "Summer"]
+          .includes(entry.term)
+      );
+  }
+
+  async function saveState() {
+    return safeStorageSet({
+      [STORAGE_KEY]: {
+        entries: state.entries,
+        selected: state.selected,
+        currentClasses: state.currentClasses,
+        collapsedSemesters:
+          state.collapsedSemesters,
+        enabled: state.enabled
+      }
+    });
   }
 
   function getDisplayName(entry) {
@@ -307,7 +438,7 @@
 
     document
       .querySelectorAll(
-        "a, span, p, [role='treeitem'], [class*='card'], [class*='Card']"
+        "a,span,p,div,li,td,button"
       )
       .forEach(element => {
         if (
@@ -323,11 +454,18 @@
         );
 
         if (
-          text.length < 8 ||
-          text.length > 350
+          text.length > 5 &&
+          text.length < 2500
         ) {
-          return;
+          parseCourses(text)
+            .forEach(entry => {
+              discovered.set(
+                entry.key,
+                entry
+              );
+            });
         }
+      });
 
         parseEntries(text)
           .forEach(entry => {
@@ -382,8 +520,11 @@
    * =========================================================
    */
 
-  function findRecordingCards() {
-    const cards = new Set();
+  async function clearAllCourses() {
+    state.entries = [];
+    state.selected = [];
+    state.currentClasses = [];
+    state.collapsedSemesters = {};
 
     document
       .querySelectorAll("a[href]")
@@ -404,7 +545,7 @@
           return;
         }
 
-        let parent = link;
+    restoreAll();
 
         for (
           let i = 0;
@@ -426,8 +567,7 @@
             parent.textContent
           );
 
-          const rect =
-            parent.getBoundingClientRect();
+    updatePanel();
 
           if (
             rect.width > 150 &&
@@ -449,12 +589,29 @@
             }
           }
 
-          parent =
-            parent.parentElement;
-        }
-      });
+  function getViewerLinks() {
+    return [
+      ...document.querySelectorAll(
+        'a[href*="/Panopto/Pages/Viewer.aspx?id="]'
+      )
+    ];
+  }
 
-    return [...cards];
+  function getViewerId(link) {
+    try {
+      const url =
+        new URL(
+          link.href,
+          location.href
+        );
+
+      return (
+        url.searchParams.get("id") ||
+        link.href
+      );
+    } catch {
+      return link.href;
+    }
   }
 
   function getCardEntries(card) {
@@ -466,21 +623,85 @@
     );
   }
 
-  function cardMatchesSelection(card) {
-    if (
-      state.selected.length === 0
+  // ============================================================
+  // COURSE CONTEXT
+  // ============================================================
+
+  function getRecordingCourses(recording) {
+    const found = new Map();
+
+    let current =
+      recording.container;
+
+    for (
+      let depth = 0;
+      depth < 7 && current;
+      depth++
     ) {
-      return true;
+      const rect =
+        current.getBoundingClientRect();
+
+      if (
+        rect.width >
+          window.innerWidth * 0.95 &&
+        rect.height >
+          window.innerHeight * 0.8
+      ) {
+        break;
+      }
+
+      const text =
+        normalize(
+          current.innerText ||
+          current.textContent
+        );
+
+      if (
+        text.length > 0 &&
+        text.length < 2500
+      ) {
+        parseCourses(text)
+          .forEach(entry => {
+            found.set(
+              entry.key,
+              entry
+            );
+          });
+      }
+
+      current =
+        current.parentElement;
     }
 
-    const entries =
-      getCardEntries(card);
+    return [...found.values()];
+  }
 
-    return entries.some(entry =>
-      state.selected.includes(
-        entry.key
+  // ============================================================
+  // RESTORE
+  // ============================================================
+
+  function restoreAll() {
+    document
+      .querySelectorAll(
+        ".pcf-recording-hidden"
       )
-    );
+      .forEach(el => {
+        el.classList.remove(
+          "pcf-recording-hidden"
+        );
+
+        el.style.removeProperty(
+          "display"
+        );
+
+        el.style.removeProperty(
+          "visibility"
+        );
+
+        el.removeAttribute(
+          "hidden"
+        );
+      });
   }
 
   /*
@@ -527,6 +748,12 @@
         continue;
       }
 
+      /*
+       * Unknown course = leave visible.
+       *
+       * Never hide the page just because we
+       * couldn't associate a recording.
+       */
       if (
         element.disabled ||
         element.getAttribute("aria-disabled") === "true"
@@ -1153,12 +1380,12 @@
           ⭐ Current Classes
         </div>
 
-        <div class="pcf-current-buttons">
-          <button id="pcf-use-current">
+        <div>
+          <button id="pcf-current">
             Use Current
           </button>
 
-          <button id="pcf-save-current">
+          <button id="pcf-save">
             Save Selected
           </button>
 
@@ -1168,8 +1395,20 @@
         </div>
       </div>
 
-      <div class="pcf-buttons">
-        <button id="pcf-current-semester">
+      <button
+        id="pcf-load"
+        class="pcf-load"
+      >
+        🔎 Load Matching Recordings
+      </button>
+
+      <div
+        id="pcf-status"
+        class="pcf-status"
+      ></div>
+
+      <div class="pcf-actions">
+        <button id="pcf-term">
           Current Semester
         </button>
       </div>
@@ -1179,7 +1418,7 @@
           id="pcf-enabled"
           type="checkbox"
         >
-        Filter recordings
+        Enable Filter
       </label>
 
       <label class="pcf-toggle">
@@ -1213,8 +1452,15 @@
       <div class="pcf-footer">
         <div id="pcf-count"></div>
 
-        <button id="pcf-refresh">
+        <button id="pcf-scan">
           ↻ Scan
+        </button>
+
+        <button
+          id="pcf-clear"
+          class="pcf-danger"
+        >
+          🗑 Clear All Courses
         </button>
       </div>
     `;
@@ -1222,10 +1468,6 @@
     document.body.appendChild(
       panel
     );
-
-    /*
-     * CLOSE
-     */
 
     document.getElementById(
       "pcf-close"
@@ -1251,7 +1493,7 @@
     enabled.onchange =
       async event => {
         state.enabled =
-          event.target.checked;
+          e.target.checked;
 
         loadMoreAttempts = 0;
 
@@ -1299,7 +1541,7 @@
     document.getElementById(
       "pcf-search"
     ).oninput =
-      () => {
+      () =>
         updatePanel();
       };
 
@@ -1359,8 +1601,9 @@
 
         await saveState();
 
+        restoreAll();
+
         applyFilter();
-      };
 
     /*
      * CLEAR ALL
@@ -1410,11 +1653,11 @@
      */
 
     document.getElementById(
-      "pcf-current-semester"
+      "pcf-term"
     ).onclick =
       async () => {
         const current =
-          getCurrentTerm();
+          currentTerm();
 
         state.selected =
           state.entries
@@ -1424,8 +1667,9 @@
               Number(entry.year) ===
                 current.year
             )
-            .map(entry =>
-              entry.key
+            .map(
+              entry =>
+                entry.key
             );
 
         loadMoreAttempts = 0;
@@ -1585,22 +1829,48 @@
         void resetEverything();
       };
 
-    /*
-     * SCAN
-     */
+        showStatus(
+          "Saved current classes cleared."
+        );
+      };
 
     document.getElementById(
-      "pcf-refresh"
+      "pcf-scan"
     ).onclick =
-      () => {
-        discoverEntries();
+      async () => {
+        await discoverCourses();
 
         loadMoreAttempts = 0;
 
         void saveState();
 
         applyFilter();
+
+        updatePanel();
+
+        showStatus(
+          `Scan complete — ${state.entries.length} courses discovered.`
+        );
       };
+
+    document.getElementById(
+      "pcf-clear"
+    ).onclick =
+      async () => {
+        if (
+          !confirm(
+            "Clear ALL discovered courses and saved current classes?"
+          )
+        ) {
+          return;
+        }
+
+        state.generation++;
+
+        await clearAllCourses();
+      };
+
+    updateLoadButton();
   }
 
   /*
@@ -1623,7 +1893,7 @@
 
     const list =
       document.getElementById(
-        "pcf-course-list"
+        "pcf-list"
       );
 
     if (
@@ -1714,9 +1984,24 @@
         header.className =
           "pcf-semester-header";
 
-        const collapsed =
-          !!state
-            .collapsedSemesters[
+      courses.className =
+        "pcf-courses";
+
+      courses.style.display =
+        collapsed
+          ? "none"
+          : "";
+
+      header
+        .querySelector(
+          ".pcf-collapse"
+        )
+        .onclick =
+        async () => {
+          state.collapsedSemesters[
+            semester
+          ] =
+            !state.collapsedSemesters[
               semester
             ];
 
@@ -1780,7 +2065,10 @@
                 semester
               ];
 
-            await saveState();
+        const checkbox =
+          document.createElement(
+            "input"
+          );
 
             updatePanel();
           };
@@ -1801,9 +2089,12 @@
                 state.selected.includes(
                   key
                 )
-              );
-
-            if (allSelected) {
+              ) {
+                state.selected.push(
+                  entry.key
+                );
+              }
+            } else {
               state.selected =
                 state.selected.filter(
                   key =>
@@ -1829,6 +2120,12 @@
 
             await saveState();
 
+            if (
+              state.selected.length === 0
+            ) {
+              restoreAll();
+            }
+
             applyFilter();
           };
 
@@ -1850,10 +2147,18 @@
               "label"
             );
 
-          label.className =
-            "pcf-course";
+        label.appendChild(
+          document.createTextNode(
+            entry.course
+          )
+        );
 
-          const checkbox =
+        if (
+          state.currentClasses.includes(
+            entry.key
+          )
+        ) {
+          const star =
             document.createElement(
               "input"
             );
@@ -1874,37 +2179,13 @@
             label.classList.add(
               "pcf-current-class"
             );
-          }
-
-          checkbox.onchange =
-            async () => {
-              if (
-                checkbox.checked
-              ) {
-                if (
-                  !state.selected.includes(
-                    entry.key
-                  )
-                ) {
-                  state.selected.push(
-                    entry.key
-                  );
-                }
-              } else {
-                state.selected =
-                  state.selected.filter(
-                    key =>
-                      key !==
-                      entry.key
-                  );
-              }
 
               loadMoreAttempts = 0;
 
               await saveState();
 
-              applyFilter();
-            };
+          star.className =
+            "pcf-star";
 
           const nameContainer =
             document.createElement(
@@ -1937,6 +2218,7 @@
           nameContainer.appendChild(
             displayName
           );
+        }
 
           /*
            * Show the real course code if renamed.
@@ -1978,19 +2260,24 @@
                 "span"
               );
 
-            star.className =
-              "pcf-star";
+    const count =
+      document.getElementById(
+        "pcf-count"
+      );
 
             star.textContent =
               "★";
 
-            star.title =
-              "Saved as a current class";
+    count.innerHTML = `
+      <div>
+        <strong>${state.selected.length}</strong>
+        selected
+      </div>
 
-            label.appendChild(
-              star
-            );
-          }
+      <div>
+        <strong>${recordings.length}</strong>
+        recordings on page
+      </div>
 
           /*
            * RENAME BUTTON
@@ -2067,9 +2354,10 @@
      * STATUS
      */
 
-    const countElement =
+  function showStatus(text) {
+    const el =
       document.getElementById(
-        "pcf-count"
+        "pcf-status"
       );
 
     if (!countElement) {
@@ -2238,7 +2526,15 @@
     createPanel();
     createLauncher();
 
-    discoverEntries();
+          /*
+           * If Chrome has invalidated this content script,
+           * stop rather than producing repeated errors.
+           */
+          if (
+            !extensionAlive()
+          ) {
+            return;
+          }
 
     await saveState();
 
@@ -2317,15 +2613,18 @@
         subtree: true
       }
     );
+  }
 
-    window.addEventListener(
-      "scroll",
+  // ============================================================
+  // SPA NAVIGATION
+  // ============================================================
+
+  function watchUrl() {
+    setInterval(
       () => {
         handleDynamicContent();
       },
-      {
-        passive: true
-      }
+      400
     );
 
     let attempts = 0;
@@ -2398,4 +2697,7 @@
       );
     });
   }
+
+  init();
+
 })();
