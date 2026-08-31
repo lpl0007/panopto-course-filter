@@ -7,12 +7,9 @@
     const result = [];
 
     document
-      .querySelectorAll(
-        "div,main,section,ul,ol"
-      )
+      .querySelectorAll("div,main,section,ul,ol")
       .forEach(element => {
-        const style =
-          getComputedStyle(element);
+        const style = getComputedStyle(element);
 
         if (
           (
@@ -32,6 +29,9 @@
   async function loadRecordings() {
     const state = PCF.state;
 
+    /*
+     * NEVER scan or modify a Panopto viewer page.
+     */
     if (
       state.loading ||
       PCF.isViewerPage()
@@ -58,7 +58,6 @@
     state.loading = true;
 
     PCF.updateLoadButton();
-
     PCF.restoreAll();
 
     let previous = 0;
@@ -74,8 +73,7 @@
          * Stop immediately if navigation occurred.
          */
         if (
-          generation !==
-            state.generation ||
+          generation !== state.generation ||
           PCF.isViewerPage()
         ) {
           return;
@@ -92,7 +90,7 @@
         });
 
         /*
-         * Load any nested Panopto scroll areas.
+         * Load nested Panopto scroll areas.
          */
         const containers =
           await getScrollContainers();
@@ -111,8 +109,7 @@
         );
 
         if (
-          generation !==
-            state.generation ||
+          generation !== state.generation ||
           PCF.isViewerPage()
         ) {
           return;
@@ -132,16 +129,13 @@
           `Loading recordings… ${count} found`
         );
 
-        if (
-          unchanged >= 7
-        ) {
+        if (unchanged >= 7) {
           break;
         }
       }
 
       if (
-        generation !==
-          state.generation ||
+        generation !== state.generation ||
         PCF.isViewerPage()
       ) {
         return;
@@ -150,14 +144,11 @@
       await PCF.discoverCourses();
     } finally {
       if (
-        generation ===
-        state.generation
+        generation === state.generation
       ) {
         state.loading = false;
 
-        if (
-          !PCF.isViewerPage()
-        ) {
+        if (!PCF.isViewerPage()) {
           PCF.applyFilter();
           PCF.updateLoadButton();
 
@@ -178,50 +169,71 @@
      * page was open, Chrome may invalidate the
      * content-script context.
      */
-    if (
-      !PCF.extensionAlive()
-    ) {
+    if (!PCF.extensionAlive()) {
       return;
     }
 
     try {
       await PCF.loadState();
 
-      if (
-        !PCF.extensionAlive()
-      ) {
+      if (!PCF.extensionAlive()) {
         return;
       }
 
       /*
-       * We always watch navigation because Panopto
-       * can change pages without a traditional reload.
+       * Always watch navigation.
+       *
+       * Panopto can change pages without a
+       * traditional full page reload.
        */
       PCF.watchUrl();
 
       /*
-       * If the initial page is a viewer, stop here.
-       *
-       * This is the second major safety net.
+       * NEVER put our UI on the actual Panopto
+       * video viewer.
        */
-      if (
-        PCF.isViewerPage()
-      ) {
+      if (PCF.isViewerPage()) {
         return;
       }
 
       /*
-       * Do not touch arbitrary Panopto pages.
+       * IMPORTANT:
+       *
+       * Create the UI BEFORE checking whether
+       * recordings are currently detectable.
+       *
+       * Panopto can render recording links after
+       * the content script starts, and the old
+       * ordering caused the entire extension UI
+       * to disappear.
        */
-      if (
-        !PCF.isFilterablePage()
-      ) {
-        return;
-      }
-
       PCF.createPanel();
       PCF.createLauncher();
 
+      /*
+       * If this isn't a recording/list page yet,
+       * leave the UI available and wait for
+       * Panopto to finish rendering.
+       */
+      if (!PCF.isFilterablePage()) {
+        PCF.showExtensionUi();
+
+        setTimeout(() => {
+          if (
+            !PCF.isViewerPage() &&
+            PCF.isFilterablePage()
+          ) {
+            PCF.installObserver();
+            PCF.scheduleScan(true);
+          }
+        }, 1500);
+
+        return;
+      }
+
+      /*
+       * We have a recording page.
+       */
       await PCF.discoverCourses();
 
       if (
@@ -242,32 +254,23 @@
        */
       PCF.scheduleScan();
 
-      setTimeout(
-        () => {
-          if (
-            !PCF.isViewerPage()
-          ) {
-            PCF.scheduleScan();
-          }
-        },
-        2500
-      );
+      setTimeout(() => {
+        if (!PCF.isViewerPage()) {
+          PCF.scheduleScan();
+        }
+      }, 2500);
 
-      setTimeout(
-        () => {
-          if (
-            !PCF.isViewerPage()
-          ) {
-            PCF.scheduleScan();
-          }
-        },
-        5000
-      );
+      setTimeout(() => {
+        if (!PCF.isViewerPage()) {
+          PCF.scheduleScan();
+        }
+      }, 5000);
+
     } catch (error) {
       const message =
         String(
           error?.message ||
-            error
+          error
         ).toLowerCase();
 
       if (
