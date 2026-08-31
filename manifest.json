@@ -1,17 +1,31 @@
 {
   "manifest_version": 3,
   "name": "Panopto Course Filter",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Filter Auburn Panopto recordings by course.",
+  "permissions": [
+    "storage"
+  ],
   "content_scripts": [
     {
-      "matches": ["https://auburn.hosted.panopto.com/*"],
-      "js": ["content.js"],
-      "css": ["styles.css"],
+      "matches": [
+        "https://auburn.hosted.panopto.com/*"
+      ],
+      "js": [
+        "state.js",
+        "courses.js",
+        "recordings.js",
+        "filter.js",
+        "ui.js",
+        "navigation.js",
+        "main.js"
+      ],
+      "css": [
+        "styles.css"
+      ],
       "run_at": "document_idle"
     }
   ],
-  "permissions": ["storage"],
   "action": {
     "default_title": "Panopto Course Filter"
   }
