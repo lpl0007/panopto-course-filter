@@ -1,0 +1,25 @@
+.pcf-semester-ignore {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 24px;
+  margin-right: 5px;
+  padding: 0;
+  border: 1px solid #c6cbc7;
+  border-radius: 5px;
+  background: white;
+  color: #555;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 22px;
+  text-align: center;
+}
+
+.pcf-semester-ignore:hover {
+  background: #f2f2f2;
+  border-color: #999;
+}
+
+.pcf-semester-ignore.is-ignored {
+  background: #fff6f6;
+  border-color: #d6aaaa;
+}
