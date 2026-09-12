@@ -1,0 +1,74 @@
+/* Large settings menu for Panopto Course Filter */
+.pcf-header { gap: 6px; }
+
+#pcf-settings-button {
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #c8ceca;
+  border-radius: 7px;
+  background: white;
+  color: #444;
+  font-size: 17px;
+  line-height: 28px;
+  cursor: pointer;
+}
+#pcf-settings-button:hover { background: #eef3ef; border-color: #9eaaa1; }
+
+#pcf-settings-modal { position: fixed; inset: 0; z-index: 2147483647; display: none; }
+#pcf-settings-modal.pcf-settings-open { display: block; }
+.pcf-settings-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.42); }
+
+.pcf-settings-window {
+  position: absolute;
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: min(720px, calc(100vw - 40px));
+  max-height: min(820px, calc(100vh - 40px));
+  display: flex; flex-direction: column; overflow: hidden;
+  background: white; color: #222; border: 1px solid #cdd3cf;
+  border-radius: 16px; box-shadow: 0 18px 60px rgba(0,0,0,.3);
+  font-family: Arial, sans-serif;
+}
+
+.pcf-settings-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 15px;
+  padding: 18px 20px; background: #f3f7f4; border-bottom: 1px solid #dfe4e0; flex-shrink: 0;
+}
+.pcf-settings-header strong, .pcf-settings-header span { display: block; }
+.pcf-settings-header strong { font-size: 18px; }
+.pcf-settings-header span { margin-top: 3px; color: #6d756f; font-size: 12px; }
+
+.pcf-settings-close {
+  width: 34px; height: 34px; padding: 0; border: 1px solid #c8ceca;
+  border-radius: 8px; background: white; color: #555; font-size: 24px; line-height: 30px; cursor: pointer;
+}
+.pcf-settings-close:hover { background: #eef1ef; }
+.pcf-settings-body { overflow-y: auto; padding: 18px 20px 22px; }
+
+.pcf-settings-section {
+  margin: 0 0 16px; padding: 14px; border: 1px solid #e0e4e1;
+  border-radius: 11px; background: #fafbfa;
+}
+.pcf-settings-section:last-child { margin-bottom: 0; }
+.pcf-settings-section h3 { margin: 0 0 10px; font-size: 13px; color: #303631; }
+
+.pcf-settings-section #pcf-search {
+  width: 100%; margin: 0; padding: 10px 12px; font-size: 14px; box-sizing: border-box;
+}
+.pcf-settings-section .pcf-global-buttons,
+.pcf-settings-section .pcf-semester-actions,
+.pcf-settings-section .pcf-buttons,
+.pcf-settings-section .pcf-video-actions { padding: 0; }
+.pcf-settings-section .pcf-current-box { margin: 0; text-align: left; }
+.pcf-settings-section .pcf-toggle { padding: 4px 0; text-align: left; }
+.pcf-settings-section #pcf-fixes-toolbar { margin: 0; }
+
+#pcf-panel > .pcf-description { padding-bottom: 8px; }
+#pcf-panel > #pcf-course-list { min-height: 360px; }
+
+@media (max-width: 600px) {
+  .pcf-settings-window { top: 12px; bottom: 12px; left: 12px; right: 12px; width: auto; max-height: none; transform: none; }
+  .pcf-settings-body { padding: 12px; }
+  .pcf-settings-header { padding: 14px; }
+}
