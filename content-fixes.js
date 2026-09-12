@@ -1,192 +1,159 @@
 (() => {
   "use strict";
 
-  const FIXES_KEY = "panoptoCourseFilterFixesV4";
-  const LEGACY_KEYS = ["panoptoCourseFilterFixesV3", "panoptoCourseFilterFixesV2", "panoptoCourseFilterFixesV1"];
+  const STORAGE_KEY = "panoptoCourseFilterFixesV5";
+  const LEGACY_KEYS = ["panoptoCourseFilterFixesV4", "panoptoCourseFilterFixesV3", "panoptoCourseFilterFixesV2", "panoptoCourseFilterFixesV1"];
   const state = { mode: "ignore", ignored: [] };
-
   let filterTimer = null;
   let observer = null;
-  let applying = false;
-  let controlsReady = false;
+  let ticking = false;
+  let quickOpen = false;
 
   const normalize = text => (text || "").replace(/\s+/g, " ").trim();
-
-  // Panopto may display either COMP-2210 or COMP 2210.
   const COURSE_RE = /\b([A-Z]{2,8})\s*[-–—]?\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?\b/gi;
   const SEMESTER_RE = /\b(Fall|Spring|Summer)\s+(\d{4})\b/i;
 
   function parseCourseCodes(text) {
-    const results = [];
-    const normalized = normalize(text);
+    const out = [];
     COURSE_RE.lastIndex = 0;
-    let match;
-
-    while ((match = COURSE_RE.exec(normalized))) {
-      results.push(`${match[1].toUpperCase()}-${match[2]}${match[3] ? `-${match[3].toUpperCase()}` : ""}`);
+    let m;
+    while ((m = COURSE_RE.exec(normalize(text)))) {
+      out.push(`${m[1].toUpperCase()}-${m[2]}${m[3] ? `-${m[3].toUpperCase()}` : ""}`);
     }
+    return [...new Set(out)];
+  }
 
-    return [...new Set(results)];
+  function baseCourse(code) {
+    return String(code || "").split("-").slice(0, 2).join("-").toUpperCase();
   }
 
   function parseSemester(text) {
-    const match = SEMESTER_RE.exec(normalize(text));
-    return match ? `${match[1][0].toUpperCase()}${match[1].slice(1).toLowerCase()} ${match[2]}` : null;
+    const m = SEMESTER_RE.exec(normalize(text));
+    return m ? `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} ${m[2]}` : null;
   }
 
   function getRowEntry(row) {
     const label = row.querySelector(".pcf-course");
     if (!label) return null;
-
-    const courseCodes = parseCourseCodes(label.innerText || label.textContent || "");
-    const course = courseCodes[0];
-    if (!course) return null;
-
+    const code = parseCourseCodes(label.innerText || label.textContent)[0];
+    if (!code) return null;
     const group = row.closest(".pcf-semester-courses");
     const header = group ? group.previousElementSibling : null;
     const semester = parseSemester(header && (header.innerText || header.textContent));
     if (!semester) return null;
-
-    return { key: `${semester}|${course}`, course, semester };
+    return { key: `${semester}|${baseCourse(code)}`, course: baseCourse(code), semester };
   }
 
   function isViewerPage() {
     return /\/pages\/viewer(?:\.aspx)?(?:\/|$)/i.test(location.pathname) || /\/viewer(?:\.aspx)?(?:\/|$)/i.test(location.pathname);
   }
 
-  function isPanelElement(element) {
-    return Boolean(element && element.closest && element.closest("#pcf-panel"));
+  function outsidePanel(el) {
+    return Boolean(el && el.closest && !el.closest("#pcf-panel"));
+  }
+
+  function isTooLarge(el) {
+    const r = el.getBoundingClientRect();
+    return r.width > Math.max(1100, window.innerWidth * .9) || r.height > Math.max(850, window.innerHeight * .9);
   }
 
   function findRecordingCards() {
     if (isViewerPage()) return [];
-
     const cards = new Set();
 
     document.querySelectorAll("a[href]").forEach(link => {
-      if (isPanelElement(link)) return;
-
+      if (!outsidePanel(link)) return;
       const href = link.getAttribute("href") || "";
-      if (!/viewer|session/i.test(href)) return;
+      const hrefLooksLikeRecording = /viewer|session|recording/i.test(href);
 
       let current = link;
-      let candidate = null;
-
-      // Choose the SMALLEST suitable ancestor, not the largest one.
-      // The old logic kept replacing the candidate as it walked upward,
-      // which could hide an entire recording grid/container instead of one card.
-      for (let i = 0; i < 10 && current && current !== document.body; i++) {
-        if (isPanelElement(current)) break;
-
-        const rect = current.getBoundingClientRect();
+      for (let depth = 0; depth < 12 && current && current !== document.body; depth++, current = current.parentElement) {
+        if (!outsidePanel(current)) break;
         const text = normalize(current.innerText || current.textContent);
-        const childLinks = current.querySelectorAll("a[href]").length;
-        const hasMedia = current.querySelector("video, audio, iframe");
-        const courseCodes = parseCourseCodes(text);
-        const tooLarge = rect.width > Math.max(1000, window.innerWidth * 0.88) || rect.height > Math.max(800, window.innerHeight * 0.88);
+        const codes = parseCourseCodes(text);
+        const r = current.getBoundingClientRect();
+        const links = current.querySelectorAll("a[href]").length;
+        const media = current.querySelector("video, audio, iframe");
+        const className = String(current.className || "").toLowerCase();
+        const classLooksLikeCard = /card|session|recording|result|tile|item/.test(className);
 
-        if (
-          !hasMedia &&
-          !tooLarge &&
-          rect.width > 150 &&
-          rect.height > 80 &&
-          rect.height < 700 &&
-          text.length >= 12 &&
-          text.length < 1200 &&
-          childLinks <= 3 &&
-          courseCodes.length > 0
-        ) {
-          candidate = current;
+        const suitable = !media && !isTooLarge(current) && r.width > 150 && r.height > 70 && r.height < 750 && text.length >= 12 && text.length < 1400 && links <= 5 && codes.length > 0;
+        if (suitable && (hrefLooksLikeRecording || classLooksLikeCard || depth >= 1)) {
+          cards.add(current);
           break;
         }
-
-        current = current.parentElement;
       }
-
-      if (candidate) cards.add(candidate);
     });
 
     return [...cards];
   }
 
-  function cardMatchesIgnoredCourse(card) {
-    const text = normalize(card.innerText || card.textContent);
-    const courses = parseCourseCodes(text);
-    if (!courses.length) return false;
-
-    const semester = parseSemester(text);
-
-    return state.ignored.some(key => {
-      const separator = key.indexOf("|");
-      if (separator < 0) return false;
-
-      const ignoredSemester = key.slice(0, separator);
-      const ignoredCourse = key.slice(separator + 1);
-
-      if (!courses.includes(ignoredCourse)) return false;
-      return !semester || ignoredSemester === semester;
-    });
+  function ignoredKeyMatches(key, cardText) {
+    const [semester, ignoredCourse] = String(key).split("|");
+    if (!semester || !ignoredCourse) return false;
+    const courses = parseCourseCodes(cardText).map(baseCourse);
+    if (!courses.includes(baseCourse(ignoredCourse))) return false;
+    const cardSemester = parseSemester(cardText);
+    return !cardSemester || cardSemester === semester;
   }
 
-  function clearFilterClasses() {
-    document.querySelectorAll(".pcf-fix-filtered-out").forEach(card => {
-      card.classList.remove("pcf-fix-filtered-out");
-      ["display", "visibility", "opacity", "pointer-events"].forEach(prop => card.style.removeProperty(prop));
+  function cardIsIgnored(card) {
+    const text = normalize(card.innerText || card.textContent);
+    return state.ignored.some(key => ignoredKeyMatches(key, text));
+  }
+
+  function clearIgnoredCards() {
+    document.querySelectorAll(".pcf-fix-ignored").forEach(card => {
+      card.classList.remove("pcf-fix-ignored");
+      ["display", "visibility", "opacity", "pointer-events"].forEach(p => card.style.removeProperty(p));
     });
   }
 
   function applyIgnoreFilter() {
-    if (applying) return;
-    applying = true;
-
-    try {
-      if (isViewerPage() || state.mode !== "ignore" || state.ignored.length === 0) {
-        clearFilterClasses();
-        return;
-      }
-
-      findRecordingCards().forEach(card => {
-        const hide = cardMatchesIgnoredCourse(card);
-        const hidden = card.classList.contains("pcf-fix-filtered-out");
-
-        if (hide && !hidden) {
-          card.classList.add("pcf-fix-filtered-out");
-          card.style.display = "none";
-          card.style.visibility = "hidden";
-          card.style.opacity = "0";
-          card.style.pointerEvents = "none";
-        } else if (!hide && hidden) {
-          card.classList.remove("pcf-fix-filtered-out");
-          ["display", "visibility", "opacity", "pointer-events"].forEach(prop => card.style.removeProperty(prop));
-        }
-      });
-    } finally {
-      applying = false;
+    if (isViewerPage() || state.mode !== "ignore" || state.ignored.length === 0) {
+      clearIgnoredCards();
+      return;
     }
+
+    findRecordingCards().forEach(card => {
+      if (cardIsIgnored(card)) {
+        card.classList.add("pcf-fix-ignored");
+        card.style.setProperty("display", "none", "important");
+        card.style.setProperty("visibility", "hidden", "important");
+        card.style.setProperty("opacity", "0", "important");
+        card.style.setProperty("pointer-events", "none", "important");
+      } else if (card.classList.contains("pcf-fix-ignored")) {
+        card.classList.remove("pcf-fix-ignored");
+        ["display", "visibility", "opacity", "pointer-events"].forEach(p => card.style.removeProperty(p));
+      }
+    });
   }
 
   function scheduleFilter() {
     clearTimeout(filterTimer);
-    filterTimer = setTimeout(applyIgnoreFilter, 120);
+    filterTimer = setTimeout(applyIgnoreFilter, 100);
   }
 
-  async function load() {
+  async function loadState() {
     try {
-      const result = await chrome.storage.local.get([FIXES_KEY, ...LEGACY_KEYS]);
-      const saved = result[FIXES_KEY] || result.panoptoCourseFilterFixesV3 || result.panoptoCourseFilterFixesV2 || result.panoptoCourseFilterFixesV1 || {};
-
+      const result = await chrome.storage.local.get([STORAGE_KEY, ...LEGACY_KEYS]);
+      const saved = result[STORAGE_KEY] || result.panoptoCourseFilterFixesV4 || result.panoptoCourseFilterFixesV3 || result.panoptoCourseFilterFixesV2 || result.panoptoCourseFilterFixesV1 || {};
       state.mode = saved.mode === "selected" ? "selected" : "ignore";
-      state.ignored = Array.isArray(saved.ignored) ? [...new Set(saved.ignored)] : [];
-    } catch (error) {
-      console.warn("Panopto Course Filter: could not load ignore settings.", error);
+      state.ignored = Array.isArray(saved.ignored) ? [...new Set(saved.ignored.map(String))] : [];
+      state.ignored = state.ignored.map(key => {
+        const i = key.indexOf("|");
+        return i < 0 ? key : `${key.slice(0, i)}|${baseCourse(key.slice(i + 1))}`;
+      });
+    } catch (e) {
+      console.warn("Panopto Course Filter: ignore settings could not be loaded.", e);
     }
   }
 
-  async function save() {
+  async function saveState() {
     try {
-      await chrome.storage.local.set({ [FIXES_KEY]: { mode: state.mode, ignored: state.ignored } });
-    } catch (error) {
-      console.warn("Panopto Course Filter: could not save ignore settings.", error);
+      await chrome.storage.local.set({ [STORAGE_KEY]: { mode: state.mode, ignored: [...new Set(state.ignored)] } });
+    } catch (e) {
+      console.warn("Panopto Course Filter: ignore settings could not be saved.", e);
     }
   }
 
@@ -198,108 +165,48 @@
     button.classList.toggle("is-ignored", ignored);
   }
 
-  async function toggleIgnored(key) {
+  async function toggleIgnored(button) {
+    const key = button && button.dataset.courseKey;
     if (!key) return;
-
-    state.mode = "ignore";
-    const index = state.ignored.indexOf(key);
-
-    if (index >= 0) state.ignored.splice(index, 1);
+    const i = state.ignored.indexOf(key);
+    if (i >= 0) state.ignored.splice(i, 1);
     else state.ignored.push(key);
-
+    state.mode = "ignore";
     updateModeUI();
-    await save();
+    await saveState();
     scheduleFilter();
   }
 
   function addIgnoreButtons() {
     const panel = document.querySelector("#pcf-panel");
     if (!panel) return;
-
     panel.querySelectorAll(".pcf-course-row").forEach(row => {
       const entry = getRowEntry(row);
       if (!entry) return;
-
       let button = row.querySelector(".pcf-ignore-fix");
-
       if (!button) {
         button = document.createElement("button");
         button.type = "button";
         button.className = "pcf-ignore-fix";
         button.addEventListener("click", event => {
           event.preventDefault();
-          event.stopPropagation();
-          void toggleIgnored(button.dataset.courseKey);
-        });
-
+          event.stopImmediatePropagation();
+          void toggleIgnored(button);
+        }, true);
         const rename = row.querySelector(".pcf-rename");
         if (rename) row.insertBefore(button, rename);
         else row.appendChild(button);
       }
-
       button.dataset.courseKey = entry.key;
       updateIgnoreButton(button);
     });
   }
 
-  function createModeToolbar() {
-    const toolbar = document.createElement("div");
-    toolbar.id = "pcf-fixes-toolbar";
-    toolbar.innerHTML = `<div class="pcf-fixes-heading"><div class="pcf-fixes-title">Filtering mode</div><div class="pcf-fixes-help">Choose how recordings are filtered.</div></div><div class="pcf-fixes-modes"><button type="button" data-fix-mode="ignore"><span class="pcf-mode-icon">🚫</span><span><strong>Hide ignored</strong><small>Show everything except courses you block</small></span></button><button type="button" data-fix-mode="selected"><span class="pcf-mode-icon">✓</span><span><strong>Show selected</strong><small>Only show courses you check</small></span></button></div><div class="pcf-fixes-tip">Hide ignored is the default. 🚫 beside a course hides or restores it.</div>`;
-
-    toolbar.addEventListener("click", async event => {
-      const button = event.target.closest("button[data-fix-mode]");
-      if (!button) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-      state.mode = button.dataset.fixMode === "selected" ? "selected" : "ignore";
-      await save();
-      updateModeUI();
-      scheduleFilter();
-    });
-
-    return toolbar;
-  }
-
-  function updateModeUI() {
-    const toolbar = document.querySelector("#pcf-fixes-toolbar");
-
-    if (toolbar) {
-      toolbar.querySelectorAll("button[data-fix-mode]").forEach(button => {
-        const active = button.dataset.fixMode === state.mode;
-        button.classList.toggle("active", active);
-        button.setAttribute("aria-pressed", String(active));
-      });
-    }
-
-    document.querySelectorAll(".pcf-ignore-fix").forEach(updateIgnoreButton);
-
-    document.querySelectorAll("#pcf-panel .pcf-course-row input[type='checkbox']").forEach(checkbox => {
-      checkbox.disabled = false;
-      checkbox.title = state.mode === "ignore" ? "Selection is inactive in Hide ignored mode" : "Select this course";
-      checkbox.style.opacity = state.mode === "ignore" ? "0.45" : "1";
-      checkbox.style.pointerEvents = state.mode === "ignore" ? "none" : "auto";
-    });
-  }
-
-  function moveControlsIntoQuickMenu(panel, controls) {
-    const ids = new Set([
-      "pcf-search",
-      "pcf-global-buttons",
-      "pcf-semester-actions",
-      "pcf-current-box",
-      "pcf-buttons",
-      "pcf-toggle",
-      "pcf-video-actions"
-    ]);
-
-    // Move every matching direct child. This also repairs a partially
-    // initialized menu where an earlier pass moved only the search box.
-    Array.from(panel.children).forEach(element => {
-      if (ids.has(element.id) && element.parentElement !== controls) {
-        controls.appendChild(element);
-      }
+  function moveAllQuickControls(panel, controls) {
+    const ids = ["pcf-search", "pcf-global-buttons", "pcf-semester-actions", "pcf-current-box", "pcf-buttons", "pcf-toggle", "pcf-video-actions"];
+    ids.forEach(id => {
+      const el = panel.querySelector(`#${id}`);
+      if (el && el !== controls && !controls.contains(el)) controls.appendChild(el);
     });
   }
 
@@ -309,134 +216,113 @@
     if (!panel || !list) return;
 
     let controls = panel.querySelector("#pcf-quick-controls");
-    let toggle = panel.querySelector("#pcf-quick-controls-toggle");
-
     if (!controls) {
       controls = document.createElement("div");
       controls.id = "pcf-quick-controls";
-      controls.className = "pcf-quick-controls";
       panel.insertBefore(controls, list);
     }
 
-    moveControlsIntoQuickMenu(panel, controls);
+    moveAllQuickControls(panel, controls);
 
+    let toggle = panel.querySelector("#pcf-quick-controls-toggle");
     if (!toggle) {
       toggle = document.createElement("button");
       toggle.type = "button";
       toggle.id = "pcf-quick-controls-toggle";
       toggle.innerHTML = "<span>☰</span><strong>Quick controls</strong><small>Search, selection, semesters & filtering</small><b>⌄</b>";
-      toggle.setAttribute("aria-expanded", "false");
-
       toggle.addEventListener("click", event => {
         event.preventDefault();
         event.stopPropagation();
-        const open = panel.classList.toggle("pcf-quick-controls-open");
-        panel.classList.toggle("pcf-quick-controls-collapsed", !open);
-        toggle.setAttribute("aria-expanded", String(open));
-        toggle.querySelector("b").textContent = open ? "⌃" : "⌄";
+        quickOpen = !quickOpen;
+        panel.classList.toggle("pcf-quick-controls-open", quickOpen);
+        panel.classList.toggle("pcf-quick-controls-collapsed", !quickOpen);
+        toggle.setAttribute("aria-expanded", String(quickOpen));
+        toggle.querySelector("b").textContent = quickOpen ? "⌃" : "⌄";
       });
-
       panel.insertBefore(toggle, controls);
     }
 
-    if (!controlsReady) {
-      panel.classList.add("pcf-quick-controls-collapsed");
-      controlsReady = true;
-    }
+    panel.classList.toggle("pcf-quick-controls-open", quickOpen);
+    panel.classList.toggle("pcf-quick-controls-collapsed", !quickOpen);
+    toggle.setAttribute("aria-expanded", String(quickOpen));
+    toggle.querySelector("b").textContent = quickOpen ? "⌃" : "⌄";
   }
 
-  function openSettings(open = true) {
-    const modal = document.querySelector("#pcf-settings-modal");
-    if (!modal) return;
-
-    modal.classList.toggle("pcf-settings-open", open);
-    modal.setAttribute("aria-hidden", String(!open));
-
-    const gear = document.querySelector("#pcf-settings-button");
-    if (gear) gear.setAttribute("aria-expanded", String(open));
+  function updateModeUI() {
+    document.querySelectorAll(".pcf-ignore-fix").forEach(updateIgnoreButton);
+    document.querySelectorAll("#pcf-fixes-toolbar button[data-fix-mode]").forEach(button => {
+      const active = button.dataset.fixMode === state.mode;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
   }
 
-  function ensureSettingsMenu() {
+  function createSettings() {
     const panel = document.querySelector("#pcf-panel");
     if (!panel) return;
-
     const header = panel.querySelector(".pcf-header");
-
-    if (header && !document.querySelector("#pcf-settings-button")) {
-      const close = header.querySelector("#pcf-close");
+    if (header && !header.querySelector("#pcf-settings-button")) {
       const gear = document.createElement("button");
       gear.type = "button";
       gear.id = "pcf-settings-button";
       gear.textContent = "⚙";
       gear.title = "Extension settings";
-      gear.setAttribute("aria-label", "Extension settings");
-      gear.setAttribute("aria-expanded", "false");
-
-      if (close) header.insertBefore(gear, close);
-      else header.appendChild(gear);
-
-      gear.addEventListener("click", event => {
-        event.preventDefault();
-        event.stopPropagation();
-        openSettings(true);
-      });
+      gear.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); document.querySelector("#pcf-settings-modal")?.classList.add("pcf-settings-open"); });
+      const close = header.querySelector("#pcf-close");
+      if (close) header.insertBefore(gear, close); else header.appendChild(gear);
     }
 
     if (document.querySelector("#pcf-settings-modal")) return;
-
     const modal = document.createElement("div");
     modal.id = "pcf-settings-modal";
-    modal.setAttribute("aria-hidden", "true");
-    modal.innerHTML = `<div class="pcf-settings-backdrop" data-settings-close></div><section class="pcf-settings-window" role="dialog" aria-modal="true" aria-label="Panopto Course Filter settings"><div class="pcf-settings-header"><div><strong>Panopto Course Filter</strong><span>Settings & advanced controls</span></div><button type="button" class="pcf-settings-close" data-settings-close aria-label="Close settings">×</button></div><div class="pcf-settings-body" id="pcf-settings-body"></div></section>`;
+    modal.innerHTML = `<div class="pcf-settings-backdrop"></div><section class="pcf-settings-window"><div class="pcf-settings-header"><div><strong>Panopto Course Filter</strong><span>Settings & advanced controls</span></div><button type="button" class="pcf-settings-close">×</button></div><div class="pcf-settings-body"></div></section>`;
     document.body.appendChild(modal);
+    modal.querySelector(".pcf-settings-backdrop").addEventListener("click", () => modal.classList.remove("pcf-settings-open"));
+    modal.querySelector(".pcf-settings-close").addEventListener("click", () => modal.classList.remove("pcf-settings-open"));
 
-    modal.querySelectorAll("[data-settings-close]").forEach(el => el.addEventListener("click", event => {
-      event.preventDefault();
-      event.stopPropagation();
-      openSettings(false);
-    }));
-
-    const body = modal.querySelector("#pcf-settings-body");
+    const body = modal.querySelector(".pcf-settings-body");
     const section = document.createElement("section");
     section.className = "pcf-settings-section";
-
-    const heading = document.createElement("h3");
-    heading.textContent = "Filtering mode";
-    section.append(heading, createModeToolbar());
+    section.innerHTML = `<h3>Filtering mode</h3><div id="pcf-fixes-toolbar"><div class="pcf-fixes-modes"><button type="button" data-fix-mode="ignore"><span>🚫</span><span><strong>Hide ignored</strong><small>Show everything except courses you block.</small></span></button><button type="button" data-fix-mode="selected"><span>✓</span><span><strong>Show selected</strong><small>Use the course checkboxes as the filter.</small></span></button></div></div>`;
     body.appendChild(section);
 
-    const note = document.createElement("div");
-    note.className = "pcf-settings-note";
-    note.innerHTML = "<strong>Quick controls:</strong> Search, selection, semester organization, current classes, filtering, and reload controls are grouped behind the Quick controls button on the main panel.";
-    body.appendChild(note);
+    section.addEventListener("click", async event => {
+      const button = event.target.closest("button[data-fix-mode]");
+      if (!button) return;
+      event.preventDefault();
+      state.mode = button.dataset.fixMode === "selected" ? "selected" : "ignore";
+      await saveState();
+      updateModeUI();
+      scheduleFilter();
+    });
   }
 
   function tick() {
-    ensureSettingsMenu();
-    setupQuickControls();
-    addIgnoreButtons();
-    updateModeUI();
-    scheduleFilter();
+    if (ticking) return;
+    ticking = true;
+    try {
+      createSettings();
+      setupQuickControls();
+      addIgnoreButtons();
+      updateModeUI();
+      scheduleFilter();
+    } finally {
+      ticking = false;
+    }
   }
 
-  async function start() {
-    await load();
+  async function init() {
+    await loadState();
     tick();
-
-    const bootTimer = setInterval(() => {
-      if (document.querySelector("#pcf-panel")) {
-        tick();
-        clearInterval(bootTimer);
-      }
-    }, 250);
-
     observer = new MutationObserver(() => {
-      clearTimeout(filterTimer);
-      setTimeout(tick, 80);
+      clearTimeout(window.__pcfFixTick);
+      window.__pcfFixTick = setTimeout(tick, 150);
     });
-
     observer.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener("load", tick, { once: true });
+    window.addEventListener("scroll", scheduleFilter, { passive: true });
   }
 
-  start();
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
+  else void init();
 })();
