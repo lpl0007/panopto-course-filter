@@ -69,8 +69,10 @@
 }
 .pcf-settings-note strong { color: #39423b; }
 
-/* Collapsible everyday controls. The actual existing controls stay in the DOM,
-   so their event handlers are not lost when the section is opened/closed. */
+/* ---------------------------------------------------------
+   COLLAPSIBLE EVERYDAY CONTROLS
+   --------------------------------------------------------- */
+
 #pcf-quick-controls-toggle {
   display: flex;
   align-items: center;
@@ -92,29 +94,86 @@
 #pcf-quick-controls-toggle small { color: #6c746e; font-size: 10px; flex: 1; }
 #pcf-quick-controls-toggle b { font-size: 15px; }
 
-#pcf-panel.pcf-quick-controls-collapsed > #pcf-search,
-#pcf-panel.pcf-quick-controls-collapsed > .pcf-global-buttons,
-#pcf-panel.pcf-quick-controls-collapsed > .pcf-semester-actions,
-#pcf-panel.pcf-quick-controls-collapsed > .pcf-current-box,
-#pcf-panel.pcf-quick-controls-collapsed > .pcf-buttons,
-#pcf-panel.pcf-quick-controls-collapsed > .pcf-toggle,
-#pcf-panel.pcf-quick-controls-collapsed > .pcf-video-actions {
+#pcf-quick-controls {
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+#pcf-panel.pcf-quick-controls-collapsed > #pcf-quick-controls {
   display: none;
 }
 
-#pcf-panel.pcf-quick-controls-open > #pcf-quick-controls-toggle { margin-bottom: 5px; }
-#pcf-panel > #pcf-search { width: calc(100% - 28px); margin: 7px 14px; }
-#pcf-panel > .pcf-global-buttons,
-#pcf-panel > .pcf-semester-actions { gap: 5px; padding-top: 2px; padding-bottom: 2px; }
-#pcf-panel > .pcf-global-buttons button,
-#pcf-panel > .pcf-semester-actions button { padding: 6px 7px; font-size: 12px; }
-#pcf-panel > .pcf-buttons { padding-top: 5px; padding-bottom: 5px; }
-#pcf-panel > .pcf-toggle { padding-top: 3px; padding-bottom: 3px; font-size: 12px; }
+#pcf-panel.pcf-quick-controls-open > #pcf-quick-controls {
+  display: block;
+}
+
+#pcf-quick-controls #pcf-search {
+  width: calc(100% - 28px);
+  margin: 7px 14px;
+}
+
+#pcf-quick-controls > .pcf-global-buttons,
+#pcf-quick-controls > .pcf-semester-actions {
+  gap: 5px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+#pcf-quick-controls > .pcf-global-buttons button,
+#pcf-quick-controls > .pcf-semester-actions button {
+  padding: 6px 7px;
+  font-size: 12px;
+}
+
+#pcf-quick-controls > .pcf-current-box {
+  margin-top: 5px;
+  margin-bottom: 8px;
+}
+
+#pcf-quick-controls > .pcf-buttons {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+#pcf-quick-controls > .pcf-toggle {
+  padding-top: 3px;
+  padding-bottom: 3px;
+  font-size: 12px;
+}
+
+#pcf-quick-controls > .pcf-video-actions {
+  padding-top: 6px;
+  padding-bottom: 8px;
+}
 
 #pcf-panel > #pcf-course-list {
   min-height: 280px;
   flex: 1 1 420px;
 }
+
+/* ---------------------------------------------------------
+   IGNORE BUTTON STABILITY
+   --------------------------------------------------------- */
+
+.pcf-ignore-fix {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  margin-right: 4px;
+  padding: 0;
+  border: 1px solid #c6cbc7;
+  border-radius: 6px;
+  background: white;
+  color: #555;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 28px;
+  text-align: center;
+  position: relative;
+  z-index: 3;
+}
+.pcf-ignore-fix:hover { background: #f2f2f2; border-color: #999; }
+.pcf-ignore-fix.is-ignored { background: #fff6f6; border-color: #d6aaaa; }
 
 @media (max-width: 600px) {
   #pcf-panel { right: 10px; left: 10px; top: 20px; width: auto; max-width: none; max-height: calc(100vh - 40px); }
