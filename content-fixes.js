@@ -170,7 +170,9 @@
     if (index >= 0) state.ignored.splice(index, 1);
     else state.ignored.push(key);
     await save();
-    document.querySelectorAll(`.pcf-ignore-fix[data-course-key="${CSS.escape(key)}"]`).forEach(updateIgnoreButton);
+    document.querySelectorAll(".pcf-ignore-fix").forEach(button => {
+      if (button.dataset.courseKey === key) updateIgnoreButton(button);
+    });
     scheduleFilter();
   }
 
@@ -185,7 +187,6 @@
         button = document.createElement("button");
         button.type = "button";
         button.className = "pcf-ignore-fix";
-        button.dataset.courseKey = entry.key;
         button.addEventListener("click", event => {
           event.preventDefault();
           event.stopPropagation();
@@ -238,46 +239,21 @@
 
   function setupQuickControls() {
     const panel = document.querySelector("#pcf-panel");
-    if (!panel || panel.querySelector("#pcf-quick-controls")) return;
-    const list = panel.querySelector("#pcf-course-list");
-    const search = panel.querySelector("#pcf-search");
-    if (!list || !search) return;
+    const list = panel && panel.querySelector("#pcf-course-list");
+    if (!panel || !list || panel.querySelector("#pcf-quick-controls-toggle")) return;
 
-    const ids = [
-      "pcf-search",
-      "pcf-select-all",
-      "pcf-clear-all",
-      "pcf-expand-all",
-      "pcf-collapse-all",
-      "pcf-use-current",
-      "pcf-save-current",
-      "pcf-clear-current",
-      "pcf-current-semester",
-      "pcf-enabled",
-      "pcf-only-selected-semesters"
-    ];
-    const nodes = ids.map(id => document.getElementById(id)).filter(Boolean);
-    const details = document.createElement("details");
-    details.id = "pcf-quick-controls";
-    details.className = "pcf-quick-controls";
-    const summary = document.createElement("summary");
-    summary.innerHTML = "<span>☰</span><strong>Quick controls</strong><small>Search, selection, semesters & filtering</small>";
-    const body = document.createElement("div");
-    body.className = "pcf-quick-controls-body";
-    details.append(summary, body);
-
-    const currentBox = panel.querySelector(".pcf-current-box");
-    const videoActions = panel.querySelector(".pcf-video-actions");
-    const topOrder = nodes;
-    topOrder.forEach(node => body.appendChild(node));
-    if (currentBox) body.appendChild(currentBox);
-    const globalButtons = panel.querySelector(".pcf-global-buttons");
-    const semesterActions = panel.querySelector(".pcf-semester-actions");
-    if (globalButtons) body.insertBefore(globalButtons, body.querySelector("#pcf-select-all")?.parentElement || body.firstChild);
-    if (semesterActions) body.appendChild(semesterActions);
-    if (videoActions) body.appendChild(videoActions);
-
-    panel.insertBefore(details, list);
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.id = "pcf-quick-controls-toggle";
+    toggle.innerHTML = "<span>☰</span><strong>Quick controls</strong><small>Search, selection, semesters & filtering</small><b>⌄</b>";
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.addEventListener("click", () => {
+      const open = panel.classList.toggle("pcf-quick-controls-open");
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.querySelector("b").textContent = open ? "⌃" : "⌄";
+    });
+    panel.insertBefore(toggle, list);
+    panel.classList.add("pcf-quick-controls-collapsed");
   }
 
   function openSettings(open = true) {
@@ -323,7 +299,7 @@
     body.appendChild(section);
     const note = document.createElement("div");
     note.className = "pcf-settings-note";
-    note.innerHTML = "<strong>Quick controls:</strong> Search, selection, semester organization, and filtering are grouped in a collapsible section on the main panel so the course list can use most of the available space.";
+    note.innerHTML = "<strong>Quick controls:</strong> The main panel can stay focused on your class list. Open Quick controls only when you need search, selection, semester organization, or filtering.";
     body.appendChild(note);
   }
 
