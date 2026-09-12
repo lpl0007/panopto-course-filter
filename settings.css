@@ -1,4 +1,12 @@
-/* Large settings menu for Panopto Course Filter */
+/* Settings and layout enhancements for Panopto Course Filter */
+
+#pcf-panel {
+  width: 470px;
+  max-width: calc(100vw - 28px);
+  max-height: calc(100vh - 60px);
+  top: 30px;
+}
+
 .pcf-header { gap: 6px; }
 
 #pcf-settings-button {
@@ -53,6 +61,13 @@
 .pcf-settings-section:last-child { margin-bottom: 0; }
 .pcf-settings-section h3 { margin: 0 0 10px; font-size: 13px; color: #303631; }
 
+#pcf-fixes-toolbar {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
 .pcf-settings-section #pcf-search {
   width: 100%; margin: 0; padding: 10px 12px; font-size: 14px; box-sizing: border-box;
 }
@@ -62,12 +77,62 @@
 .pcf-settings-section .pcf-video-actions { padding: 0; }
 .pcf-settings-section .pcf-current-box { margin: 0; text-align: left; }
 .pcf-settings-section .pcf-toggle { padding: 4px 0; text-align: left; }
-.pcf-settings-section #pcf-fixes-toolbar { margin: 0; }
 
-#pcf-panel > .pcf-description { padding-bottom: 8px; }
-#pcf-panel > #pcf-course-list { min-height: 360px; }
+.pcf-settings-note {
+  margin-top: 2px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #f3f7f4;
+  color: #5f6861;
+  font-size: 12px;
+  line-height: 17px;
+}
+.pcf-settings-note strong { color: #39423b; }
+
+/* Keep the frequently used controls on the main panel. */
+#pcf-panel > #pcf-search {
+  width: calc(100% - 28px);
+  margin: 7px 14px;
+}
+
+#pcf-panel > .pcf-global-buttons,
+#pcf-panel > .pcf-semester-actions {
+  gap: 5px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+#pcf-panel > .pcf-global-buttons button,
+#pcf-panel > .pcf-semester-actions button {
+  padding: 6px 7px;
+  font-size: 12px;
+}
+
+#pcf-panel > .pcf-buttons {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+#pcf-panel > .pcf-toggle {
+  padding-top: 3px;
+  padding-bottom: 3px;
+  font-size: 12px;
+}
+
+#pcf-panel > #pcf-course-list {
+  min-height: 280px;
+  flex: 1 1 420px;
+}
 
 @media (max-width: 600px) {
+  #pcf-panel {
+    right: 10px;
+    left: 10px;
+    top: 20px;
+    width: auto;
+    max-width: none;
+    max-height: calc(100vh - 40px);
+  }
   .pcf-settings-window { top: 12px; bottom: 12px; left: 12px; right: 12px; width: auto; max-height: none; transform: none; }
   .pcf-settings-body { padding: 12px; }
   .pcf-settings-header { padding: 14px; }
