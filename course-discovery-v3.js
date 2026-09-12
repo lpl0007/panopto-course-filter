@@ -2,6 +2,7 @@
   "use strict";
 
   const STORAGE_KEY = "panoptoCourseFilterV14";
+  const TERM_NAMES = new Set(["FALL", "SPRING", "SUMMER"]);
   const COURSE_RE = /\b([A-Z]{2,8})\s*[-–—]?\s*(\d{3,5})\b/gi;
   const CROSS_LISTED_RE = /\b([A-Z]{2,8})\s*[-–—]?\s*(\d{3,5})\s*\/\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?(?:\s*\/\s*([A-Z0-9]{1,8}))?\b/gi;
   const PAIR_A = /\b(Fall|Spring|Summer)\s+(\d{4})[\s\S]{0,280}?\b([A-Z]{2,8})\s*[-–—]?\s*(\d{3,5})\b/gi;
@@ -11,6 +12,8 @@
   const termName = (term, year) => `${term[0].toUpperCase()}${term.slice(1).toLowerCase()} ${year}`;
 
   function add(found, term, year, course) {
+    const subject = String(course).split("-")[0].toUpperCase();
+    if (TERM_NAMES.has(subject)) return;
     const semester = termName(term, year);
     const key = `${semester}|${course}`;
     found.set(key, { key, term: semester.split(" ")[0], year: semester.split(" ")[1], course });
@@ -23,7 +26,7 @@
       const subject = match[1].toUpperCase();
       const first = match[2];
       const second = match[3];
-      if (!semester) continue;
+      if (!semester || TERM_NAMES.has(subject)) continue;
       add(found, semester.term, semester.year, `${subject}-${first}`);
       add(found, semester.term, semester.year, `${subject}-${second}`);
     }
@@ -62,7 +65,11 @@
         scanCrossListed(text, found, semester);
         COURSE_RE.lastIndex = 0;
         let course;
-        while ((course = COURSE_RE.exec(text))) add(found, semesterMatch[1], semesterMatch[2], `${course[1].toUpperCase()}-${course[2]}`);
+        while ((course = COURSE_RE.exec(text))) {
+          const subject = course[1].toUpperCase();
+          if (TERM_NAMES.has(subject)) continue;
+          add(found, semesterMatch[1], semesterMatch[2], `${subject}-${course[2]}`);
+        }
       }
       scanPairs(text, found);
     }
@@ -76,7 +83,7 @@
       if (split < 0) continue;
       const semester = String(item.key).slice(0, split).trim();
       const course = String(item.key).slice(split + 1).toUpperCase().replace(/[-–—]/g, "-").split("-").slice(0, 2).join("-");
-      if (!semester || !course) continue;
+      if (!semester || !course || TERM_NAMES.has(course.split("-")[0])) continue;
       map.set(`${semester}|${course}`, { ...item, key: `${semester}|${course}`, term: semester.split(" ")[0], year: semester.split(" ")[1], course });
     }
     return map;
