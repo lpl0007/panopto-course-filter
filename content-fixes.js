@@ -16,9 +16,7 @@
 
   function parseCourseCode(text) {
     const match = COURSE_RE.exec(normalize(text));
-    return match
-      ? `${match[1].toUpperCase()}-${match[2]}${match[3] ? `-${match[3].toUpperCase()}` : ""}`
-      : null;
+    return match ? `${match[1].toUpperCase()}-${match[2]}${match[3] ? `-${match[3].toUpperCase()}` : ""}` : null;
   }
 
   function parseSemester(text) {
@@ -29,15 +27,12 @@
   function getRowEntry(row) {
     const label = row.querySelector(".pcf-course");
     if (!label) return null;
-
     const course = parseCourseCode(label.innerText || label.textContent || "");
     if (!course) return null;
-
     const group = row.closest(".pcf-semester-courses");
     const header = group ? group.previousElementSibling : null;
     const semester = parseSemester(header && (header.innerText || header.textContent));
     if (!semester) return null;
-
     return { key: `${semester}|${course}`, course, semester };
   }
 
@@ -51,7 +46,6 @@
 
   function findRecordingCards() {
     if (isViewerPage()) return [];
-
     const cards = new Set();
 
     document.querySelectorAll("a[href]").forEach(link => {
@@ -64,17 +58,15 @@
 
       for (let i = 0; i < 9 && current && current !== document.body; i++) {
         if (isPanelElement(current)) break;
-
         const rect = current.getBoundingClientRect();
         const text = normalize(current.innerText || current.textContent);
         const childLinks = current.querySelectorAll("a[href]").length;
         const hasMedia = current.querySelector("video, audio, iframe");
         const tooLarge = rect.width > Math.max(900, window.innerWidth * 0.92) || rect.height > Math.max(850, window.innerHeight * 0.92);
 
-        if (!hasMedia && !tooLarge && rect.width > 180 && rect.height > 80 && rect.height < 900 && text.length >= 12 && text.length < 1800 && childLinks <= 6) {
-          if (parseCourseCode(text)) best = current;
+        if (!hasMedia && !tooLarge && rect.width > 180 && rect.height > 80 && rect.height < 900 && text.length >= 12 && text.length < 1800 && childLinks <= 6 && parseCourseCode(text)) {
+          best = current;
         }
-
         current = current.parentElement;
       }
 
@@ -88,7 +80,6 @@
     const text = normalize(card.innerText || card.textContent);
     const course = parseCourseCode(text);
     if (!course) return false;
-
     const semester = parseSemester(text);
 
     return state.ignored.some(key => {
@@ -111,7 +102,6 @@
   function applyIgnoreFilter() {
     if (applying) return;
     applying = true;
-
     try {
       if (isViewerPage() || state.mode !== "ignore") {
         clearFilterClasses();
@@ -121,7 +111,6 @@
       findRecordingCards().forEach(card => {
         const hide = cardMatchesIgnoredCourse(card);
         const hidden = card.classList.contains("pcf-fix-filtered-out");
-
         if (hide && !hidden) {
           card.classList.add("pcf-fix-filtered-out");
           card.style.display = "none";
@@ -168,20 +157,14 @@
     button.title = ignored ? "Restore this course" : "Ignore this course";
     button.setAttribute("aria-label", button.title);
     button.classList.toggle("is-ignored", ignored);
-    button.classList.toggle("is-disabled", false);
   }
 
   async function toggleIgnored(key) {
     if (!key) return;
-
-    if (state.mode !== "ignore") {
-      state.mode = "ignore";
-    }
-
+    state.mode = "ignore";
     const index = state.ignored.indexOf(key);
     if (index >= 0) state.ignored.splice(index, 1);
     else state.ignored.push(key);
-
     await save();
     updateModeUI();
     scheduleFilter();
@@ -194,16 +177,12 @@
     panel.querySelectorAll(".pcf-course-row").forEach(row => {
       const entry = getRowEntry(row);
       if (!entry) return;
-
       let button = row.querySelector(".pcf-ignore-fix");
+
       if (!button) {
         button = document.createElement("button");
         button.type = "button";
         button.className = "pcf-ignore-fix";
-        button.dataset.courseKey = entry.key;
-        button.textContent = "🚫";
-        button.title = "Ignore this course";
-        button.setAttribute("aria-label", "Ignore this course");
         const rename = row.querySelector(".pcf-rename");
         if (rename) row.insertBefore(button, rename);
         else row.appendChild(button);
@@ -218,7 +197,6 @@
     const toolbar = document.createElement("div");
     toolbar.id = "pcf-fixes-toolbar";
     toolbar.innerHTML = `<div class="pcf-fixes-heading"><div class="pcf-fixes-title">Filtering mode</div><div class="pcf-fixes-help">Choose how recordings are filtered.</div></div><div class="pcf-fixes-modes"><button type="button" data-fix-mode="ignore"><span class="pcf-mode-icon">🚫</span><span><strong>Hide ignored</strong><small>Show everything except courses you block</small></span></button><button type="button" data-fix-mode="selected"><span class="pcf-mode-icon">✓</span><span><strong>Show selected</strong><small>Only show courses you check</small></span></button></div><div class="pcf-fixes-tip">Hide ignored is the default. 🚫 beside a course hides or restores it.</div>`;
-
     toolbar.addEventListener("click", async event => {
       const button = event.target.closest("button[data-fix-mode]");
       if (!button) return;
@@ -229,7 +207,6 @@
       updateModeUI();
       scheduleFilter();
     });
-
     return toolbar;
   }
 
@@ -268,7 +245,6 @@
 
     [
       "pcf-search",
-      "pcf-fixes-toolbar",
       "pcf-global-buttons",
       "pcf-semester-actions",
       "pcf-current-box",
@@ -277,7 +253,7 @@
       "pcf-video-actions"
     ].forEach(id => {
       const element = document.getElementById(id);
-      if (element && element !== controls && !controls.contains(element)) controls.appendChild(element);
+      if (element && !controls.contains(element)) controls.appendChild(element);
     });
 
     toggle.addEventListener("click", event => {
@@ -347,7 +323,7 @@
 
     const note = document.createElement("div");
     note.className = "pcf-settings-note";
-    note.innerHTML = "<strong>Quick controls:</strong> Use the collapsible section on the main panel whenever you need search, selection, semester organization, or filtering.";
+    note.innerHTML = "<strong>Quick controls:</strong> Search, selection, semester organization, current classes, filtering, and reload controls are grouped on the main panel and can be expanded only when needed.";
     body.appendChild(note);
   }
 
@@ -355,7 +331,6 @@
     const panel = document.querySelector("#pcf-panel");
     if (!panel || panelEventsInstalled) return;
     panelEventsInstalled = true;
-
     panel.addEventListener("click", event => {
       const button = event.target.closest(".pcf-ignore-fix");
       if (!button || !panel.contains(button)) return;
@@ -388,7 +363,6 @@
       clearTimeout(filterTimer);
       setTimeout(tick, 80);
     });
-
     observer.observe(document.body, { childList: true, subtree: true });
   }
 
