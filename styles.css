@@ -2,95 +2,165 @@
   position: fixed;
   top: 80px;
   right: 18px;
-
   width: 430px;
   max-width: calc(100vw - 36px);
   max-height: calc(100vh - 110px);
-
   z-index: 2147483647;
-
   background: white;
   color: #222;
-
   border: 1px solid #ccc;
   border-radius: 12px;
-
   box-shadow: 0 8px 30px rgba(0,0,0,.25);
-
   font-family: Arial, sans-serif;
   font-size: 14px;
-
   overflow: hidden;
-
-  /* Important for keeping the course list scrollable */
   display: flex;
   flex-direction: column;
 }
 
-#pcf-panel.pcf-hidden {
-  display: none;
-}
-
-/* ---------------------------------------------------------
-   HEADER
-   --------------------------------------------------------- */
+#pcf-panel.pcf-hidden { display: none; }
 
 .pcf-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-
   flex-shrink: 0;
-
   padding: 13px 14px;
-
   background: #f3f7f4;
   border-bottom: 1px solid #ddd;
 }
 
-.pcf-header strong {
-  font-size: 15px;
-}
+.pcf-header strong { font-size: 15px; }
 
 #pcf-close {
   border: 0;
   background: transparent;
   font-size: 22px;
   cursor: pointer;
-
   padding: 2px 6px;
   line-height: 1;
 }
 
-/* ---------------------------------------------------------
-   DESCRIPTION
-   --------------------------------------------------------- */
-
 .pcf-description {
   flex-shrink: 0;
-
   padding: 10px 14px 5px;
-
   color: #666;
 }
 
-/* ---------------------------------------------------------
-   SEARCH
-   --------------------------------------------------------- */
-
 #pcf-search {
   box-sizing: border-box;
-
   width: calc(100% - 28px);
-
   margin: 8px 14px;
-
   padding: 8px 10px;
-
   border: 1px solid #bbb;
   border-radius: 7px;
-
   flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------
+   FILTERING MODE
+   --------------------------------------------------------- */
+
+#pcf-fixes-toolbar {
+  margin: 6px 14px 9px;
+  padding: 10px;
+  background: #f7f9f7;
+  border: 1px solid #d8ded9;
+  border-radius: 9px;
+  flex-shrink: 0;
+}
+
+.pcf-fixes-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.pcf-fixes-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #333;
+}
+
+.pcf-fixes-help {
+  color: #777;
+  font-size: 11px;
+}
+
+.pcf-fixes-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.pcf-fixes-modes button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid #c9ceca;
+  border-radius: 7px;
+  background: white;
+  color: #333;
+  cursor: pointer;
+  text-align: left;
+}
+
+.pcf-fixes-modes button:hover {
+  background: #f0f3f1;
+  border-color: #aeb7b0;
+}
+
+.pcf-fixes-modes button.active {
+  background: #e8f1ea;
+  border-color: #4d7d59;
+  box-shadow: inset 0 0 0 1px #4d7d59;
+}
+
+.pcf-mode-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 25px;
+  height: 25px;
+  flex: 0 0 25px;
+  border-radius: 6px;
+  background: #eef1ef;
+  font-size: 13px;
+}
+
+.pcf-fixes-modes button.active .pcf-mode-icon {
+  background: white;
+}
+
+.pcf-fixes-modes strong,
+.pcf-fixes-modes small {
+  display: block;
+  min-width: 0;
+}
+
+.pcf-fixes-modes strong {
+  font-size: 12px;
+  line-height: 15px;
+}
+
+.pcf-fixes-modes small {
+  margin-top: 1px;
+  color: #777;
+  font-size: 10px;
+  line-height: 13px;
+}
+
+.pcf-fixes-tip {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid #e1e5e2;
+  color: #666;
+  font-size: 11px;
+  line-height: 15px;
 }
 
 /* ---------------------------------------------------------
@@ -100,52 +170,51 @@
 .pcf-current-box {
   margin: 5px 14px 8px;
   padding: 8px;
-
   background: #f7f9f7;
-
   border: 1px solid #ddd;
   border-radius: 7px;
-
   text-align: center;
-
   flex-shrink: 0;
 }
 
 .pcf-current-title {
   margin-bottom: 7px;
-
   font-weight: bold;
   text-align: left;
 }
 
 .pcf-current-buttons {
   display: flex;
-
   justify-content: center;
   align-items: center;
-
   flex-wrap: wrap;
-
   gap: 6px;
 }
 
-.pcf-current-buttons button {
+.pcf-current-buttons button,
+.pcf-global-buttons button,
+.pcf-semester-actions button,
+.pcf-buttons button,
+.pcf-video-actions button,
+#pcf-refresh {
   border: 1px solid #bbb;
-
   background: white;
-
   border-radius: 6px;
-
-  padding: 5px 9px;
-
   cursor: pointer;
+}
 
+.pcf-current-buttons button {
+  padding: 5px 9px;
   font-size: 12px;
-
   white-space: nowrap;
 }
 
-.pcf-current-buttons button:hover {
+.pcf-current-buttons button:hover,
+.pcf-global-buttons button:hover,
+.pcf-semester-actions button:hover,
+.pcf-buttons button:hover,
+.pcf-video-actions button:hover,
+#pcf-refresh:hover {
   background: #f0f0f0;
 }
 
@@ -156,39 +225,19 @@
 .pcf-global-buttons,
 .pcf-semester-actions {
   display: flex;
-
   justify-content: center;
   align-items: center;
-
   gap: 6px;
-
   padding: 3px 14px;
-
   flex-shrink: 0;
 }
 
 .pcf-global-buttons button,
 .pcf-semester-actions button {
   flex: 1;
-
   min-width: 0;
-
-  border: 1px solid #bbb;
-
-  background: white;
-
-  border-radius: 6px;
-
   padding: 6px 9px;
-
-  cursor: pointer;
-
   white-space: nowrap;
-}
-
-.pcf-global-buttons button:hover,
-.pcf-semester-actions button:hover {
-  background: #f0f0f0;
 }
 
 /* ---------------------------------------------------------
@@ -197,33 +246,16 @@
 
 .pcf-buttons {
   display: flex;
-
   justify-content: center;
   align-items: center;
-
   padding: 6px 14px 7px;
-
   flex-shrink: 0;
 }
 
 .pcf-buttons button {
   width: 100%;
-
-  border: 1px solid #bbb;
-
-  background: white;
-
-  border-radius: 6px;
-
   padding: 6px 9px;
-
-  cursor: pointer;
-
   white-space: nowrap;
-}
-
-.pcf-buttons button:hover {
-  background: #f0f0f0;
 }
 
 /* ---------------------------------------------------------
@@ -232,13 +264,9 @@
 
 .pcf-toggle {
   display: block;
-
   padding: 4px 14px;
-
   text-align: center;
-
   flex-shrink: 0;
-
   cursor: pointer;
 }
 
@@ -246,224 +274,142 @@
    COURSE LIST
    --------------------------------------------------------- */
 
-/*
- * This is the important part for scrolling.
- *
- * The panel itself is a flex column and the course list
- * takes the remaining available space.
- */
-
 #pcf-course-list {
   flex: 1 1 auto;
-
   min-height: 120px;
-
   height: auto;
   max-height: none;
-
   overflow-y: auto;
   overflow-x: hidden;
-
   border-top: 1px solid #eee;
-
   box-sizing: border-box;
-
-  /*
-   * Prevent the page underneath Panopto from receiving
-   * the scroll when the cursor is over the course list.
-   */
   overscroll-behavior: contain;
-
-  /*
-   * Make sure the browser knows this element should scroll.
-   */
   touch-action: pan-y;
 }
 
-#pcf-course-list::-webkit-scrollbar {
-  width: 9px;
-}
-
-#pcf-course-list::-webkit-scrollbar-track {
-  background: #f1f1f1;
-}
-
-#pcf-course-list::-webkit-scrollbar-thumb {
-  background: #aaa;
-
-  border-radius: 5px;
-}
-
-#pcf-course-list::-webkit-scrollbar-thumb:hover {
-  background: #888;
-}
-
-/* ---------------------------------------------------------
-   SEMESTER HEADINGS
-   --------------------------------------------------------- */
+#pcf-course-list::-webkit-scrollbar { width: 9px; }
+#pcf-course-list::-webkit-scrollbar-track { background: #f1f1f1; }
+#pcf-course-list::-webkit-scrollbar-thumb { background: #aaa; border-radius: 5px; }
+#pcf-course-list::-webkit-scrollbar-thumb:hover { background: #888; }
 
 .pcf-semester-header {
   display: flex;
-
   align-items: center;
-
   padding: 7px 8px;
-
   background: #eef4ef;
-
   border-bottom: 1px solid #ddd;
-
   position: sticky;
   top: 0;
-
   z-index: 2;
 }
 
-.pcf-semester-header strong {
-  flex: 1;
-
-  min-width: 0;
-}
+.pcf-semester-header strong { flex: 1; min-width: 0; }
 
 .pcf-semester-name {
   display: flex;
-
   align-items: center;
-
   gap: 6px;
-
   min-width: 0;
 }
 
 .pcf-semester-count {
   color: #777;
-
   font-size: 11px;
-
   white-space: nowrap;
 }
 
 .pcf-semester-toggle,
 .pcf-semester-all {
   border: 1px solid #bbb;
-
   background: white;
-
   border-radius: 5px;
-
   cursor: pointer;
-
   flex-shrink: 0;
 }
 
-.pcf-semester-toggle {
-  width: 25px;
-  height: 24px;
-
-  padding: 0;
-
-  margin-right: 5px;
-}
-
-.pcf-semester-all {
-  padding: 4px 7px;
-
-  font-size: 11px;
-}
-
+.pcf-semester-toggle { width: 25px; height: 24px; padding: 0; margin-right: 5px; }
+.pcf-semester-all { padding: 4px 7px; font-size: 11px; }
 .pcf-semester-toggle:hover,
-.pcf-semester-all:hover {
-  background: #f0f0f0;
-}
-
-/* ---------------------------------------------------------
-   COURSES
-   --------------------------------------------------------- */
+.pcf-semester-all:hover { background: #f0f0f0; }
 
 .pcf-course-row {
   display: flex;
-
   align-items: center;
-
   width: 100%;
-
   box-sizing: border-box;
-
   border-bottom: 1px solid #f1f1f1;
 }
 
 .pcf-course {
   display: flex;
-
   align-items: center;
-
   gap: 8px;
-
   flex: 1;
-
   min-width: 0;
-
   padding: 8px 8px 8px 14px;
-
   cursor: pointer;
 }
 
-.pcf-course:hover {
-  background: #f3f3f3;
-}
-
-.pcf-course.pcf-current-class {
-  background: #fffbea;
-}
-
-/* ---------------------------------------------------------
-   COURSE NAME
-   --------------------------------------------------------- */
+.pcf-course:hover { background: #f3f3f3; }
+.pcf-course.pcf-current-class { background: #fffbea; }
 
 .pcf-course-name {
   display: flex;
-
   align-items: baseline;
-
   gap: 6px;
-
   min-width: 0;
-
   flex: 1;
 }
 
 .pcf-course-display-name {
   display: block;
-
   min-width: 0;
-
   overflow: hidden;
-
   text-overflow: ellipsis;
-
   white-space: nowrap;
 }
-
-/*
- * The native title/tooltip behavior can be used by the
- * content script. Keep the text itself from forcing the
- * row wider than the panel.
- */
 
 .pcf-course-original-name {
   color: #999;
-
   font-size: 11px;
-
   white-space: nowrap;
-
   flex-shrink: 0;
 }
 
-.pcf-star {
-  color: #d6a500;
+.pcf-star { color: #d6a500; flex-shrink: 0; }
 
-  flex-shrink: 0;
+/* ---------------------------------------------------------
+   IGNORE BUTTON
+   --------------------------------------------------------- */
+
+.pcf-ignore-fix {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  margin-right: 4px;
+  padding: 0;
+  border: 1px solid #c6cbc7;
+  border-radius: 6px;
+  background: white;
+  color: #555;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 28px;
+  text-align: center;
+}
+
+.pcf-ignore-fix:hover {
+  background: #f2f2f2;
+  border-color: #999;
+}
+
+.pcf-ignore-fix.is-ignored {
+  background: #fff6f6;
+  border-color: #d6aaaa;
+}
+
+.pcf-ignore-fix.is-disabled {
+  opacity: .55;
 }
 
 /* ---------------------------------------------------------
@@ -472,189 +418,85 @@
 
 .pcf-rename {
   flex-shrink: 0;
-
   width: 30px;
   height: 30px;
-
   margin-right: 8px;
-
   padding: 0;
-
   border: 1px solid #bbb;
-
   background: white;
-
   border-radius: 5px;
-
   cursor: pointer;
-
   font-size: 14px;
-
   line-height: 28px;
-
   text-align: center;
 }
 
-.pcf-rename:hover {
-  background: #f0f0f0;
-}
-
-/* ---------------------------------------------------------
-   VIDEO ACTIONS
-   --------------------------------------------------------- */
+.pcf-rename:hover { background: #f0f0f0; }
 
 .pcf-video-actions {
   display: grid;
-
   grid-template-columns: repeat(2, minmax(0, 1fr));
-
   gap: 6px;
-
   padding: 6px 14px 8px;
-
   flex-shrink: 0;
 }
 
 .pcf-video-actions button {
   width: 100%;
-
   min-width: 0;
-
   box-sizing: border-box;
-
-  border: 1px solid #bbb;
-
-  background: white;
-
-  border-radius: 6px;
-
   padding: 6px 7px;
-
-  cursor: pointer;
-
   font-size: 12px;
-
   white-space: nowrap;
-
   overflow: hidden;
-
   text-overflow: ellipsis;
 }
 
-.pcf-video-actions button:hover {
-  background: #f0f0f0;
-}
-
-.pcf-video-actions button:disabled {
-  opacity: 0.6;
-
-  cursor: wait;
-}
-
-/* ---------------------------------------------------------
-   FOOTER
-   --------------------------------------------------------- */
+.pcf-video-actions button:disabled { opacity: 0.6; cursor: wait; }
 
 .pcf-footer {
   display: flex;
-
   justify-content: space-between;
   align-items: center;
-
   gap: 10px;
-
   padding: 9px 14px;
-
   border-top: 1px solid #ddd;
-
   color: #666;
-
   font-size: 12px;
-
   flex-shrink: 0;
 }
 
-#pcf-count {
-  min-width: 0;
+#pcf-count { min-width: 0; flex: 1; }
+.pcf-status { margin-bottom: 2px; color: #444; }
+.pcf-saved-count { margin-top: 3px; }
+.pcf-discovered-count { margin-top: 2px; }
 
-  flex: 1;
-}
-
-.pcf-status {
-  margin-bottom: 2px;
-
-  color: #444;
-}
-
-.pcf-saved-count {
-  margin-top: 3px;
-}
-
-.pcf-discovered-count {
-  margin-top: 2px;
-}
-
-#pcf-refresh {
-  flex-shrink: 0;
-
-  border: 1px solid #bbb;
-
-  background: white;
-
-  border-radius: 6px;
-
-  padding: 6px 9px;
-
-  cursor: pointer;
-}
-
-#pcf-refresh:hover {
-  background: #f0f0f0;
-}
-
-/* ---------------------------------------------------------
-   LAUNCHER
-   --------------------------------------------------------- */
+#pcf-refresh { flex-shrink: 0; padding: 6px 9px; }
 
 #pcf-launcher {
   position: fixed;
-
   right: 18px;
   bottom: 18px;
-
   z-index: 2147483646;
-
   border: 0;
-
   border-radius: 22px;
-
   padding: 11px 16px;
-
   background: #3f7f4f;
   color: white;
-
   font: bold 14px Arial, sans-serif;
-
   cursor: pointer;
-
   box-shadow: 0 4px 15px rgba(0,0,0,.25);
 }
 
-#pcf-launcher:hover {
-  background: #336a40;
-}
-
-/* ---------------------------------------------------------
-   SMALL SCREENS
-   --------------------------------------------------------- */
+#pcf-launcher:hover { background: #336a40; }
 
 @media (max-width: 500px) {
   #pcf-panel {
     right: 10px;
     left: 10px;
-
     width: auto;
-
     max-width: none;
   }
+
+  .pcf-fixes-modes { grid-template-columns: 1fr; }
 }
