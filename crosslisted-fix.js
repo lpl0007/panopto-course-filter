@@ -18,11 +18,7 @@
         const first = Math.min(Number(a), Number(b));
         const second = Math.max(Number(a), Number(b));
         if (first === second) continue;
-        pairs.set(`${subject}-${first}/${second}`, {
-          subject,
-          first: String(first),
-          second: String(second)
-        });
+        pairs.set(`${subject}-${first}/${second}`, { subject, first: String(first), second: String(second) });
       }
     };
 
@@ -54,10 +50,7 @@
     const value = String(key || "");
     const separator = value.indexOf("|");
     if (separator < 0) return value;
-    const semester = value.slice(0, separator);
-    const course = value.slice(separator + 1);
-    const canonical = canonicalCourse(course, pairs);
-    return `${semester}|${canonical}`;
+    return `${value.slice(0, separator)}|${canonicalCourse(value.slice(separator + 1), pairs)}`;
   }
 
   function courseRows() {
@@ -72,17 +65,14 @@
 
   function mergeRows(pairs) {
     const groups = new Map();
-
     for (const row of courseRows()) {
       const course = rowCourse(row);
       const pair = pairForCourse(course, pairs);
       if (!pair) continue;
-
       const group = row.closest(".pcf-semester-courses");
       const header = group && group.previousElementSibling;
       const semester = normalize(header && (header.innerText || header.textContent));
       if (!semester) continue;
-
       const key = `${semester}|${pair.subject}-${pair.first}/${pair.second}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(row);
@@ -90,10 +80,8 @@
 
     for (const [key, rows] of groups) {
       if (rows.length < 2) continue;
-
       const pair = pairs.find(item => key.endsWith(`${item.subject}-${item.first}/${item.second}`));
       if (!pair) continue;
-
       const first = rows[0];
       const firstNumber = Number(rowCourse(first)?.match(/(\d{3,5})/)?.[1]);
       const preferred = rows.find(row => firstNumber !== Number(pair.first) && Number(rowCourse(row)?.match(/(\d{3,5})/)?.[1]) === Number(pair.first)) || first;
@@ -102,21 +90,14 @@
         name.textContent = `${pair.subject}-${pair.first}/${pair.second}`;
         name.title = `${pair.subject}-${pair.first}/${pair.second} (cross-listed)`;
       }
-
       const checkbox = preferred.querySelector("input[type='checkbox']");
-      if (checkbox) {
-        checkbox.dataset.crosslistedCourse = `${pair.subject}-${pair.first}/${pair.second}`;
-      }
-
+      if (checkbox) checkbox.dataset.crosslistedCourse = `${pair.subject}-${pair.first}/${pair.second}`;
       const ignore = preferred.querySelector(".pcf-ignore-fix");
       if (ignore) {
         ignore.dataset.crosslistedCourse = `${pair.subject}-${pair.first}/${pair.second}`;
         ignore.dataset.courseKey = canonicalKey(ignore.dataset.courseKey, pairs);
       }
-
-      for (const row of rows) {
-        if (row !== preferred) row.remove();
-      }
+      for (const row of rows) if (row !== preferred) row.remove();
     }
   }
 
@@ -125,11 +106,9 @@
       const result = await chrome.storage.local.get(MAIN_STORAGE_KEY);
       const saved = result[MAIN_STORAGE_KEY];
       if (!saved || typeof saved !== "object") return false;
-
       const entries = Array.isArray(saved.entries) ? saved.entries : [];
       const unique = new Map();
       let changed = false;
-
       for (const entry of entries) {
         if (!entry || !entry.key) continue;
         const key = canonicalKey(entry.key, pairs);
@@ -138,23 +117,12 @@
         if (key !== entry.key || course !== entry.course) changed = true;
         unique.set(key, { ...entry, key, course });
       }
-
       const normalizeKeys = values => [...new Set((Array.isArray(values) ? values : []).map(value => canonicalKey(value, pairs)))];
       const selected = normalizeKeys(saved.selected);
       const currentClasses = normalizeKeys(saved.currentClasses);
       const customNames = {};
-      for (const [key, value] of Object.entries(saved.customNames || {})) {
-        customNames[canonicalKey(key, pairs)] = value;
-      }
-
-      const cleaned = {
-        ...saved,
-        entries: [...unique.values()],
-        selected,
-        currentClasses,
-        customNames
-      };
-
+      for (const [key, value] of Object.entries(saved.customNames || {})) customNames[canonicalKey(key, pairs)] = value;
+      const cleaned = { ...saved, entries: [...unique.values()], selected, currentClasses, customNames };
       if (JSON.stringify(cleaned) !== JSON.stringify(saved)) {
         await chrome.storage.local.set({ [MAIN_STORAGE_KEY]: cleaned });
         changed = true;
@@ -171,7 +139,6 @@
       const saved = result[MAIN_STORAGE_KEY];
       if (!saved || typeof saved !== "object") return;
       const selected = Array.isArray(saved.selected) ? saved.selected.map(String) : [];
-
       const selectedPairs = pairs.filter(pair => selected.some(key => key.includes(`|${pair.subject}-${pair.first}`)));
       if (!selectedPairs.length) return;
 
@@ -183,7 +150,11 @@
         let current = link;
         for (let depth = 0; depth < 10 && current && current !== document.body; depth++, current = current.parentElement) {
           const text = normalize(current.innerText || current.textContent).toUpperCase();
-          const matchingPair = selectedPairs.find(pair => text.includes(`${pair.subject}-${pair.first}`) && text.includes(`${pair.subject}-${pair.second}`));
+          const matchingPair = selectedPairs.find(pair => {
+            const firstCode = `${pair.subject}-${pair.first}`;
+            const secondCode = `${pair.subject}-${pair.second}`;
+            return text.includes(firstCode) || text.includes(secondCode);
+          });
           if (!matchingPair) continue;
 
           if (getComputedStyle(current).display === "none") {
@@ -202,28 +173,22 @@
   async function run() {
     const pairs = discoverCrossListedPairs();
     if (!pairs.length) return;
-
     const changed = await normalizeStorage(pairs);
     mergeRows(pairs);
     keepCrossListedCardsVisible(pairs);
-
-    if (changed && sessionStorage.getItem("pcfCrossListedNormalizedV2") !== "1") {
-      sessionStorage.setItem("pcfCrossListedNormalizedV2", "1");
+    if (changed && sessionStorage.getItem("pcfCrossListedNormalizedV3") !== "1") {
+      sessionStorage.setItem("pcfCrossListedNormalizedV3", "1");
       setTimeout(() => location.reload(), 50);
     }
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", run, { once: true });
-  } else {
-    run();
-  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run, { once: true });
+  else run();
 
   const observer = new MutationObserver(() => {
     clearTimeout(observer.timer);
     observer.timer = setTimeout(run, 150);
   });
   observer.observe(document.body, { childList: true, subtree: true });
-
   setInterval(run, 700);
 })();
