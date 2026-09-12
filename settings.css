@@ -94,70 +94,30 @@
 #pcf-quick-controls-toggle small { color: #6c746e; font-size: 10px; flex: 1; }
 #pcf-quick-controls-toggle b { font-size: 15px; }
 
-#pcf-quick-controls {
-  flex-shrink: 0;
-  overflow: hidden;
-}
-
-#pcf-panel.pcf-quick-controls-collapsed > #pcf-quick-controls {
-  display: none;
-}
-
-#pcf-panel.pcf-quick-controls-open > #pcf-quick-controls {
-  display: block;
-}
-
-#pcf-quick-controls #pcf-search {
-  width: calc(100% - 28px);
-  margin: 7px 14px;
-}
-
+#pcf-quick-controls { flex-shrink: 0; overflow: hidden; }
+#pcf-panel.pcf-quick-controls-collapsed > #pcf-quick-controls { display: none; }
+#pcf-panel.pcf-quick-controls-open > #pcf-quick-controls { display: block; }
+#pcf-quick-controls #pcf-search { width: calc(100% - 28px); margin: 7px 14px; }
 #pcf-quick-controls > .pcf-global-buttons,
-#pcf-quick-controls > .pcf-semester-actions {
-  gap: 5px;
-  padding-top: 2px;
-  padding-bottom: 2px;
-}
-
+#pcf-quick-controls > .pcf-semester-actions { gap: 5px; padding-top: 2px; padding-bottom: 2px; }
 #pcf-quick-controls > .pcf-global-buttons button,
-#pcf-quick-controls > .pcf-semester-actions button {
-  padding: 6px 7px;
-  font-size: 12px;
-}
+#pcf-quick-controls > .pcf-semester-actions button { padding: 6px 7px; font-size: 12px; }
+#pcf-quick-controls > .pcf-current-box { margin-top: 5px; margin-bottom: 8px; }
+#pcf-quick-controls > .pcf-buttons { padding-top: 5px; padding-bottom: 5px; }
+#pcf-quick-controls > .pcf-toggle { padding-top: 3px; padding-bottom: 3px; font-size: 12px; }
+#pcf-quick-controls > .pcf-video-actions { padding-top: 6px; padding-bottom: 8px; }
 
-#pcf-quick-controls > .pcf-current-box {
-  margin-top: 5px;
-  margin-bottom: 8px;
-}
+#pcf-panel > #pcf-course-list { min-height: 280px; flex: 1 1 420px; }
 
-#pcf-quick-controls > .pcf-buttons {
-  padding-top: 5px;
-  padding-bottom: 5px;
-}
-
-#pcf-quick-controls > .pcf-toggle {
-  padding-top: 3px;
-  padding-bottom: 3px;
-  font-size: 12px;
-}
-
-#pcf-quick-controls > .pcf-video-actions {
-  padding-top: 6px;
-  padding-bottom: 8px;
-}
-
-#pcf-panel > #pcf-course-list {
-  min-height: 280px;
-  flex: 1 1 420px;
-}
+/* Keep the list invisible while Panopto is still rebuilding it.
+   content.js discovers additional courses asynchronously; revealing
+   only after the fix layer sees a stable list prevents visible flicker. */
+#pcf-panel > #pcf-course-list.pcf-startup-hidden { visibility: hidden !important; }
 
 /* ---------------------------------------------------------
    IGNORE MODE VS. LEGACY SELECTION FILTER
    --------------------------------------------------------- */
 
-/* The original content script still owns .pcf-filtered-out.
-   In Hide ignored mode, make those legacy selection hides visible again.
-   The fix layer then hides only the courses explicitly placed on the ignore list. */
 body.pcf-ignore-mode .pcf-filtered-out {
   display: block !important;
   visibility: visible !important;
