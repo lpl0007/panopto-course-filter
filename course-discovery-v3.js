@@ -3,6 +3,7 @@
 
   const STORAGE_KEY = "panoptoCourseFilterV14";
   const COURSE_RE = /\b([A-Z]{2,8})\s*[-–—]?\s*(\d{3,5})\b/gi;
+  const CROSS_LISTED_RE = /\b([A-Z]{2,8})\s*[-–—]?\s*(\d{3,5})\s*\/\s*(\d{3,5})(?:\s*[-–—]\s*([A-Z0-9]{1,8}))?(?:\s*\/\s*([A-Z0-9]{1,8}))?\b/gi;
   const PAIR_A = /\b(Fall|Spring|Summer)\s+(\d{4})[\s\S]{0,280}?\b([A-Z]{2,8})\s*[-–—]?\s*(\d{3,5})\b/gi;
   const PAIR_B = /\b([A-Z]{2,8})\s*[-–—]?\s*(\d{3,5})\b[\s\S]{0,280}?\b(Fall|Spring|Summer)\s+(\d{4})\b/gi;
 
@@ -15,12 +16,34 @@
     found.set(key, { key, term: semester.split(" ")[0], year: semester.split(" ")[1], course });
   }
 
+  function scanCrossListed(text, found, semester) {
+    CROSS_LISTED_RE.lastIndex = 0;
+    let match;
+    while ((match = CROSS_LISTED_RE.exec(text))) {
+      const subject = match[1].toUpperCase();
+      const first = match[2];
+      const second = match[3];
+      if (!semester) continue;
+      add(found, semester.term, semester.year, `${subject}-${first}`);
+      add(found, semester.term, semester.year, `${subject}-${second}`);
+    }
+  }
+
   function scanPairs(text, found) {
     let match;
     PAIR_A.lastIndex = 0;
-    while ((match = PAIR_A.exec(text))) add(found, match[1], match[2], `${match[3].toUpperCase()}-${match[4]}`);
+    while ((match = PAIR_A.exec(text))) {
+      const semester = { term: match[1], year: match[2] };
+      scanCrossListed(match[0], found, semester);
+      add(found, match[1], match[2], `${match[3].toUpperCase()}-${match[4]}`);
+    }
+
     PAIR_B.lastIndex = 0;
-    while ((match = PAIR_B.exec(text))) add(found, match[3], match[4], `${match[1].toUpperCase()}-${match[2]}`);
+    while ((match = PAIR_B.exec(text))) {
+      const semester = { term: match[3], year: match[4] };
+      scanCrossListed(match[0], found, semester);
+      add(found, match[3], match[4], `${match[1].toUpperCase()}-${match[2]}`);
+    }
   }
 
   function scanVisibleNodes(found) {
@@ -35,6 +58,8 @@
 
       const semesterMatch = /\b(Fall|Spring|Summer)\s+(\d{4})\b/i.exec(text);
       if (semesterMatch) {
+        const semester = { term: semesterMatch[1], year: semesterMatch[2] };
+        scanCrossListed(text, found, semester);
         COURSE_RE.lastIndex = 0;
         let course;
         while ((course = COURSE_RE.exec(text))) add(found, semesterMatch[1], semesterMatch[2], `${course[1].toUpperCase()}-${course[2]}`);
@@ -75,12 +100,12 @@
       if (JSON.stringify(cleaned) === JSON.stringify(saved)) return;
       await chrome.storage.local.set({ [STORAGE_KEY]: cleaned });
 
-      if (sessionStorage.getItem("pcfDiscoveryV3Reloaded") !== "1") {
-        sessionStorage.setItem("pcfDiscoveryV3Reloaded", "1");
+      if (sessionStorage.getItem("pcfDiscoveryV4Reloaded") !== "1") {
+        sessionStorage.setItem("pcfDiscoveryV4Reloaded", "1");
         setTimeout(() => location.reload(), 50);
       }
     } catch (error) {
-      console.warn("Panopto Course Filter: discovery v3 failed.", error);
+      console.warn("Panopto Course Filter: discovery v4 failed.", error);
     }
   }
 
