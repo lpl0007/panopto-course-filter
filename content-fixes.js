@@ -3,6 +3,7 @@
 
   const STORAGE_KEY = "panoptoCourseFilterV14";
   const FIXES_KEY = "panoptoCourseFilterFixesV2";
+  const OLD_FIXES_KEY = "panoptoCourseFilterFixesV1";
   const state = { mode: "ignore", ignored: [] };
   let filterTimer = null;
   let uiTimer = null;
@@ -127,11 +128,12 @@
 
   async function load() {
     try {
-      const result = await chrome.storage.local.get([STORAGE_KEY, FIXES_KEY]);
+      const result = await chrome.storage.local.get([STORAGE_KEY, FIXES_KEY, OLD_FIXES_KEY]);
       const oldState = result[STORAGE_KEY] || {};
       const saved = result[FIXES_KEY] || {};
+      const oldSaved = result[OLD_FIXES_KEY] || {};
       state.mode = saved.mode === "selected" ? "selected" : "ignore";
-      state.ignored = Array.isArray(saved.ignored) ? saved.ignored : [];
+      state.ignored = Array.isArray(saved.ignored) ? saved.ignored : (Array.isArray(oldSaved.ignored) ? oldSaved.ignored : []);
       if (state.mode === "ignore" && Array.isArray(oldState.selected) && oldState.selected.length) {
         await chrome.storage.local.set({ [STORAGE_KEY]: { ...oldState, selected: [] } });
       }
@@ -180,13 +182,18 @@
 
   function updateModeUI() {
     const toolbar = document.querySelector("#pcf-fixes-toolbar");
-    if (!toolbar) return;
-    toolbar.querySelectorAll("button[data-fix-mode]").forEach(button => {
-      const active = button.dataset.fixMode === state.mode;
-      button.classList.toggle("active", active);
-      button.setAttribute("aria-pressed", String(active));
-    });
+    if (toolbar) {
+      toolbar.querySelectorAll("button[data-fix-mode]").forEach(button => {
+        const active = button.dataset.fixMode === state.mode;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", String(active));
+      });
+    }
     document.querySelectorAll(".pcf-ignore-fix").forEach(updateIgnoreButton);
+    document.querySelectorAll("#pcf-panel .pcf-course-row input[type='checkbox']").forEach(checkbox => {
+      checkbox.disabled = state.mode === "ignore";
+      checkbox.title = state.mode === "ignore" ? "Switch to Show selected mode to select courses" : "Select this course";
+    });
   }
 
   function ensureFilteringToolbar() {
