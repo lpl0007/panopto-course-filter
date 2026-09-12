@@ -8,6 +8,10 @@
     return String(text || "").replace(/\s+/g, " ").trim();
   }
 
+  function canonicalKey(key) {
+    return String(key || "").replace(/\|COMP-6830(?=-|$)/i, "|COMP-5830");
+  }
+
   function isCrossListedText(text) {
     const value = normalize(text);
     const matches = [...value.matchAll(COURSE_RE)].map(match => match[1]);
@@ -46,8 +50,10 @@
       if (!second) continue;
 
       const name = first.querySelector(".pcf-course-display-name");
-      if (name) name.textContent = "COMP-5830/6830";
-      if (name) name.title = "COMP-5830/6830 (cross-listed)";
+      if (name) {
+        name.textContent = "COMP-5830/6830";
+        name.title = "COMP-5830/6830 (cross-listed)";
+      }
 
       const checkbox = first.querySelector("input[type='checkbox']");
       if (checkbox) checkbox.dataset.crosslisted58306830 = "true";
@@ -55,44 +61,65 @@
       const ignore = first.querySelector(".pcf-ignore-fix");
       if (ignore) {
         ignore.dataset.crosslisted58306830 = "true";
-        ignore.dataset.courseKey = ignore.dataset.courseKey.replace(/COMP-(?:5830|6830)/, "COMP-5830");
+        ignore.dataset.courseKey = canonicalKey(ignore.dataset.courseKey);
       }
 
       second.remove();
     }
   }
 
-  function syncStorage() {
-    chrome.storage.local.get(MAIN_STORAGE_KEY).then(result => {
+  async function normalizeStorage() {
+    try {
+      const result = await chrome.storage.local.get(MAIN_STORAGE_KEY);
       const saved = result[MAIN_STORAGE_KEY];
-      if (!saved || typeof saved !== "object") return;
+      if (!saved || typeof saved !== "object") return false;
 
-      const selected = Array.isArray(saved.selected) ? saved.selected : [];
-      const has5830 = selected.some(key => /\|COMP-5830(?:-|$)/.test(String(key)));
-      const has6830 = selected.some(key => /\|COMP-6830(?:-|$)/.test(String(key)));
-      if (!has5830 && !has6830) return;
+      const entries = Array.isArray(saved.entries) ? saved.entries : [];
+      const unique = new Map();
+      let changed = false;
 
-      const nextSelected = [...new Set(selected.map(key => {
-        const value = String(key);
-        if (/\|COMP-6830(?:-|$)/.test(value)) return value.replace(/\|COMP-6830/, "|COMP-5830");
-        return value;
-      }))];
-
-      if (JSON.stringify(nextSelected) !== JSON.stringify(selected)) {
-        chrome.storage.local.set({ [MAIN_STORAGE_KEY]: { ...saved, selected: nextSelected } });
+      for (const entry of entries) {
+        if (!entry || !entry.key) continue;
+        const key = canonicalKey(entry.key);
+        const course = key.slice(key.indexOf("|") + 1);
+        if (key !== entry.key || course !== entry.course) changed = true;
+        unique.set(key, { ...entry, key, course });
       }
-    }).catch(() => {});
+
+      const normalizeKeys = values => [...new Set((Array.isArray(values) ? values : []).map(canonicalKey))];
+      const selected = normalizeKeys(saved.selected);
+      const currentClasses = normalizeKeys(saved.currentClasses);
+      const customNames = {};
+      for (const [key, value] of Object.entries(saved.customNames || {})) {
+        customNames[canonicalKey(key)] = value;
+      }
+
+      const cleaned = {
+        ...saved,
+        entries: [...unique.values()],
+        selected,
+        currentClasses,
+        customNames
+      };
+
+      if (JSON.stringify(cleaned) !== JSON.stringify(saved)) {
+        await chrome.storage.local.set({ [MAIN_STORAGE_KEY]: cleaned });
+        changed = true;
+      }
+      return changed;
+    } catch (error) {
+      console.warn("Panopto Course Filter: could not normalize cross-listed course state.", error);
+      return false;
+    }
   }
 
   function keepCrossListedCardsVisible() {
-    const savedPromise = chrome.storage.local.get(MAIN_STORAGE_KEY).catch(() => ({}));
-    savedPromise.then(result => {
+    chrome.storage.local.get(MAIN_STORAGE_KEY).then(result => {
       const saved = result[MAIN_STORAGE_KEY];
       if (!saved || typeof saved !== "object") return;
       const selected = Array.isArray(saved.selected) ? saved.selected.map(String) : [];
       const selected5830 = selected.some(key => /\|COMP-5830(?:-|$)/.test(key));
-      const selected6830 = selected.some(key => /\|COMP-6830(?:-|$)/.test(key));
-      if (!selected5830 && !selected6830) return;
+      if (!selected5830) return;
 
       document.querySelectorAll("a[href]").forEach(link => {
         if (link.closest?.("#pcf-panel")) return;
@@ -102,8 +129,7 @@
         for (let depth = 0; depth < 10 && current && current !== document.body; depth++, current = current.parentElement) {
           const text = normalize(current.innerText || current.textContent);
           if (!isCrossListedText(text)) continue;
-          const style = getComputedStyle(current);
-          if (style.display === "none") {
+          if (getComputedStyle(current).display === "none") {
             current.classList.add("pcf-crosslisted-selected");
             current.style.setProperty("display", "revert", "important");
             current.style.removeProperty("visibility");
@@ -113,13 +139,18 @@
           break;
         }
       });
-    });
+    }).catch(() => {});
   }
 
-  function run() {
+  async function run() {
+    const changed = await normalizeStorage();
     mergeRows();
-    syncStorage();
     keepCrossListedCardsVisible();
+
+    if (changed && sessionStorage.getItem("pcfCrossListedNormalized") !== "1") {
+      sessionStorage.setItem("pcfCrossListedNormalized", "1");
+      setTimeout(() => location.reload(), 50);
+    }
   }
 
   if (document.readyState === "loading") {
