@@ -152,6 +152,27 @@
 }
 
 /* ---------------------------------------------------------
+   IGNORE MODE VS. LEGACY SELECTION FILTER
+   --------------------------------------------------------- */
+
+/* The original content script still owns .pcf-filtered-out.
+   In Hide ignored mode, make those legacy selection hides visible again.
+   The fix layer then hides only the courses explicitly placed on the ignore list. */
+body.pcf-ignore-mode .pcf-filtered-out {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+body.pcf-ignore-mode .pcf-fix-filtered-out {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* ---------------------------------------------------------
    IGNORE BUTTON STABILITY
    --------------------------------------------------------- */
 
