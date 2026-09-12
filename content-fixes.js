@@ -36,21 +36,21 @@
 
   function parseCourseCode(text) {
     const match = COURSE_RE.exec(normalize(text));
-    if (!match) return null;
-    return `${match[1].toUpperCase()}-${match[2]}${match[3] ? `-${match[3].toUpperCase()}` : ""}`;
+    return match ? `${match[1].toUpperCase()}-${match[2]}${match[3] ? `-${match[3].toUpperCase()}` : ""}` : null;
   }
 
   function getRowEntry(row) {
     const label = row.querySelector(".pcf-course");
     if (!label) return null;
-    const full = parseEntries(label.innerText || label.textContent)[0];
-    if (full) return full;
-    const course = parseCourseCode(label.innerText || label.textContent);
+    const text = label.innerText || label.textContent || "";
+    const course = parseCourseCode(text);
     if (!course) return null;
+
     const group = row.closest(".pcf-semester-courses");
-    const header = group && group.previousElementSibling;
-    const semesterMatch = /\b(Fall|Spring|Summer)\s+(\d{4})\b/i.exec(normalize(header && header.innerText));
+    const header = group ? group.previousElementSibling : null;
+    const semesterMatch = /\b(Fall|Spring|Summer)\s+(\d{4})\b/i.exec(normalize(header && (header.innerText || header.textContent)));
     if (!semesterMatch) return null;
+
     const term = semesterMatch[1][0].toUpperCase() + semesterMatch[1].slice(1).toLowerCase();
     const year = semesterMatch[2];
     return { key: `${term} ${year}|${course}`, term, year, course };
@@ -71,6 +71,7 @@
       if (isPanelElement(link)) return;
       const href = link.getAttribute("href") || "";
       if (!/viewer|session/i.test(href)) return;
+
       let parent = link;
       for (let i = 0; i < 7 && parent; i++) {
         if (isPanelElement(parent)) break;
@@ -80,8 +81,9 @@
         const childLinks = parent.querySelectorAll("a[href]").length;
         const tooLarge = rect.width > Math.max(900, window.innerWidth * .9) || rect.height > Math.max(850, window.innerHeight * .9);
         const looksLikePlayer = Boolean(parent.querySelector("video, audio, iframe, .video-js, [class*='player' i]"));
-        if (!tooLarge && !looksLikePlayer && rect.width > 150 && rect.height > 100 && rect.height < 900 && text.length >= 15 && text.length < 1600 && childLinks <= 5) {
-          if (parseEntries(text).length) { cards.add(parent); break; }
+        if (!tooLarge && !looksLikePlayer && rect.width > 150 && rect.height > 100 && rect.height < 900 && text.length >= 15 && text.length < 1600 && childLinks <= 5 && parseEntries(text).length) {
+          cards.add(parent);
+          break;
         }
         parent = parent.parentElement;
       }
@@ -89,8 +91,9 @@
     return [...cards];
   }
 
-  function cardEntries(card) { return parseEntries(normalize(card.innerText || card.textContent)); }
-  function cardShouldHide(card) { return state.ignored.length > 0 && cardEntries(card).some(entry => state.ignored.includes(entry.key)); }
+  function cardShouldHide(card) {
+    return state.ignored.length > 0 && parseEntries(normalize(card.innerText || card.textContent)).some(entry => state.ignored.includes(entry.key));
+  }
 
   function clearFilterClasses() {
     document.querySelectorAll(".pcf-fix-filtered-out, .pcf-filtered-out").forEach(card => {
@@ -103,7 +106,10 @@
     if (applying) return;
     applying = true;
     try {
-      if (isViewerPage() || state.mode !== "ignore") { clearFilterClasses(); return; }
+      if (isViewerPage() || state.mode !== "ignore") {
+        clearFilterClasses();
+        return;
+      }
       getRecordingCards().forEach(card => {
         const hide = cardShouldHide(card);
         const hidden = card.classList.contains("pcf-fix-filtered-out");
@@ -118,7 +124,9 @@
           ["display", "visibility", "opacity", "pointer-events"].forEach(prop => card.style.removeProperty(prop));
         }
       });
-    } finally { applying = false; }
+    } finally {
+      applying = false;
+    }
   }
 
   function scheduleFilter() {
@@ -137,12 +145,17 @@
       if (state.mode === "ignore" && Array.isArray(oldState.selected) && oldState.selected.length) {
         await chrome.storage.local.set({ [STORAGE_KEY]: { ...oldState, selected: [] } });
       }
-    } catch (error) { console.warn("Panopto Course Filter: fixes could not load state.", error); }
+    } catch (error) {
+      console.warn("Panopto Course Filter: fixes could not load state.", error);
+    }
   }
 
   async function save() {
-    try { await chrome.storage.local.set({ [FIXES_KEY]: { mode: state.mode, ignored: state.ignored } }); }
-    catch (error) { console.warn("Panopto Course Filter: fixes could not save state.", error); }
+    try {
+      await chrome.storage.local.set({ [FIXES_KEY]: { mode: state.mode, ignored: state.ignored } });
+    } catch (error) {
+      console.warn("Panopto Course Filter: fixes could not save state.", error);
+    }
   }
 
   function updateIgnoreButton(button) {
@@ -161,23 +174,61 @@
       let button = row.querySelector(".pcf-ignore-fix");
       const entry = getRowEntry(row);
       if (!entry) return;
+
       if (!button) {
         button = document.createElement("button");
         button.type = "button";
         button.className = "pcf-ignore-fix";
         button.addEventListener("click", async event => {
-          event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation();
           const key = button.dataset.courseKey;
           const index = state.ignored.indexOf(key);
           if (index >= 0) state.ignored.splice(index, 1); else state.ignored.push(key);
-          await save(); updateIgnoreButton(button); scheduleFilter();
+          await save();
+          updateIgnoreButton(button);
+          scheduleFilter();
         });
         const rename = row.querySelector(".pcf-rename");
         if (rename) row.insertBefore(button, rename); else row.appendChild(button);
       }
+
       button.dataset.courseKey = entry.key;
       updateIgnoreButton(button);
     });
+  }
+
+  function createModeToolbar() {
+    const toolbar = document.createElement("div");
+    toolbar.id = "pcf-fixes-toolbar";
+    toolbar.innerHTML = `
+      <div class="pcf-fixes-heading">
+        <div class="pcf-fixes-title">Filtering mode</div>
+        <div class="pcf-fixes-help">Choose how recordings are filtered.</div>
+      </div>
+      <div class="pcf-fixes-modes">
+        <button type="button" data-fix-mode="ignore"><span class="pcf-mode-icon">🚫</span><span><strong>Hide ignored</strong><small>Show everything except courses you block</small></span></button>
+        <button type="button" data-fix-mode="selected"><span class="pcf-mode-icon">✓</span><span><strong>Show selected</strong><small>Only show courses you check</small></span></button>
+      </div>
+      <div class="pcf-fixes-tip">In Hide ignored mode, use the 🚫 button beside a course.</div>`;
+    toolbar.addEventListener("click", async event => {
+      const button = event.target.closest("button[data-fix-mode]");
+      if (!button) return;
+      event.preventDefault();
+      state.mode = button.dataset.fixMode === "selected" ? "selected" : "ignore";
+      if (state.mode === "ignore") {
+        try {
+          const result = await chrome.storage.local.get(STORAGE_KEY);
+          const oldState = result[STORAGE_KEY] || {};
+          await chrome.storage.local.set({ [STORAGE_KEY]: { ...oldState, selected: [] } });
+        } catch {}
+      }
+      await save();
+      updateModeUI();
+      scheduleFilter();
+    });
+    return toolbar;
   }
 
   function updateModeUI() {
@@ -193,36 +244,6 @@
     document.querySelectorAll("#pcf-panel .pcf-course-row input[type='checkbox']").forEach(checkbox => {
       checkbox.disabled = state.mode === "ignore";
       checkbox.title = state.mode === "ignore" ? "Switch to Show selected mode to select courses" : "Select this course";
-    });
-  }
-
-  function ensureFilteringToolbar() {
-    const panel = document.querySelector("#pcf-panel");
-    if (!panel || panel.querySelector("#pcf-fixes-toolbar")) return;
-    const toolbar = document.createElement("div");
-    toolbar.id = "pcf-fixes-toolbar";
-    toolbar.innerHTML = `
-      <div class="pcf-fixes-heading"><div><div class="pcf-fixes-title">Filtering mode</div><div class="pcf-fixes-help">Choose how recordings are filtered.</div></div></div>
-      <div class="pcf-fixes-modes">
-        <button type="button" data-fix-mode="ignore"><span class="pcf-mode-icon">🚫</span><span><strong>Hide ignored</strong><small>Show everything except courses you block</small></span></button>
-        <button type="button" data-fix-mode="selected"><span class="pcf-mode-icon">✓</span><span><strong>Show selected</strong><small>Only show courses you check</small></span></button>
-      </div>
-      <div class="pcf-fixes-tip">In Hide ignored mode, use the 🚫 button beside a course to hide or restore it.</div>`;
-    const search = panel.querySelector("#pcf-search");
-    panel.insertBefore(toolbar, search || panel.firstChild);
-    toolbar.addEventListener("click", async event => {
-      const button = event.target.closest("button[data-fix-mode]");
-      if (!button) return;
-      event.preventDefault(); event.stopPropagation();
-      state.mode = button.dataset.fixMode === "selected" ? "selected" : "ignore";
-      if (state.mode === "ignore") {
-        try {
-          const result = await chrome.storage.local.get(STORAGE_KEY);
-          const oldState = result[STORAGE_KEY] || {};
-          await chrome.storage.local.set({ [STORAGE_KEY]: { ...oldState, selected: [] } });
-        } catch {}
-      }
-      await save(); updateModeUI(); scheduleFilter();
     });
   }
 
@@ -268,31 +289,24 @@
     modal.innerHTML = `
       <div class="pcf-settings-backdrop" data-settings-close></div>
       <section class="pcf-settings-window" role="dialog" aria-modal="true" aria-label="Panopto Course Filter settings">
-        <div class="pcf-settings-header"><div><strong>Panopto Course Filter</strong><span>Settings & controls</span></div><button type="button" class="pcf-settings-close" data-settings-close aria-label="Close settings">×</button></div>
+        <div class="pcf-settings-header"><div><strong>Panopto Course Filter</strong><span>Settings & advanced controls</span></div><button type="button" class="pcf-settings-close" data-settings-close aria-label="Close settings">×</button></div>
         <div class="pcf-settings-body" id="pcf-settings-body"></div>
       </section>`;
     document.body.appendChild(modal);
     modal.querySelectorAll("[data-settings-close]").forEach(el => el.addEventListener("click", () => openSettings(false)));
 
     const body = modal.querySelector("#pcf-settings-body");
-    const toolbar = panel.querySelector("#pcf-fixes-toolbar");
-    const search = panel.querySelector("#pcf-search");
-    if (toolbar) body.appendChild(toolbar);
-    if (search) body.appendChild(wrapSection("Search courses", search));
-    const global = panel.querySelector(".pcf-global-buttons"); if (global) body.appendChild(wrapSection("Selection", global));
-    const semesters = panel.querySelector(".pcf-semester-actions"); if (semesters) body.appendChild(wrapSection("Semester organization", semesters));
-    const current = panel.querySelector(".pcf-current-box"); if (current) body.appendChild(wrapSection("Current classes", current));
-    const currentSemester = panel.querySelector(".pcf-buttons"); if (currentSemester) body.appendChild(wrapSection("Quick selection", currentSemester));
-    const toggles = [...panel.querySelectorAll(".pcf-toggle")];
-    if (toggles[0]) body.appendChild(wrapSection("Filtering", toggles[0]));
-    if (toggles[1]) body.appendChild(wrapSection("Semester visibility", toggles[1]));
-    const actions = panel.querySelector(".pcf-video-actions"); if (actions) body.appendChild(wrapSection("Maintenance", actions));
+    body.appendChild(wrapSection("Filtering mode", createModeToolbar()));
+
+    const note = document.createElement("div");
+    note.className = "pcf-settings-note";
+    note.innerHTML = "<strong>Tip:</strong> Search, selection, semester organization, and Filter recordings stay on the main panel so your most-used controls are always within reach.";
+    body.appendChild(note);
   }
 
   function start() {
     load().then(() => {
       const tick = () => {
-        ensureFilteringToolbar();
         ensureSettingsMenu();
         addIgnoreButtons();
         updateModeUI();
@@ -303,11 +317,11 @@
         if (applying) return;
         if (mutations.some(m => m.type === "childList")) {
           clearTimeout(uiTimer);
-          uiTimer = setTimeout(tick, 250);
+          uiTimer = setTimeout(tick, 200);
         }
       });
       if (document.body) observer.observe(document.body, { childList: true, subtree: true });
-      setInterval(() => { addIgnoreButtons(); updateModeUI(); }, 1200);
+      setInterval(() => { addIgnoreButtons(); updateModeUI(); }, 800);
     });
   }
 
