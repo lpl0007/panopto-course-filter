@@ -7,7 +7,7 @@
     {
       "matches": ["https://auburn.hosted.panopto.com/*"],
       "js": ["content.js", "content-fixes.js"],
-      "css": ["styles.css"],
+      "css": ["styles.css", "settings.css"],
       "run_at": "document_idle"
     }
   ],
