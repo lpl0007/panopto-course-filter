@@ -1,14 +1,16 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "panoptoCourseFilterFixesV6";
+  const STORAGE_KEY = "panoptoCourseFilterFixesV7";
   const LEGACY_KEYS = [
+    "panoptoCourseFilterFixesV6",
     "panoptoCourseFilterFixesV5",
     "panoptoCourseFilterFixesV4",
     "panoptoCourseFilterFixesV3",
     "panoptoCourseFilterFixesV2",
     "panoptoCourseFilterFixesV1"
   ];
+  const MAIN_STORAGE_KEY = "panoptoCourseFilterV14";
 
   const state = { mode: "ignore", ignored: [] };
   let filterTimer = null;
@@ -143,10 +145,84 @@
     filterTimer = setTimeout(applyIgnoreFilter, 80);
   }
 
+  function dedupeMainState(saved) {
+    const entries = Array.isArray(saved.entries) ? saved.entries : [];
+    const uniqueEntries = new Map();
+
+    entries.forEach(entry => {
+      if (!entry || !entry.key) return;
+      const separator = String(entry.key).indexOf("|");
+      if (separator < 0) return;
+
+      const semester = String(entry.key).slice(0, separator);
+      const course = baseCourse(String(entry.key).slice(separator + 1));
+      const key = `${semester}|${course}`;
+
+      uniqueEntries.set(key, {
+        key,
+        term: entry.term,
+        year: entry.year,
+        course
+      });
+    });
+
+    const normalizeKeys = values => [...new Set((Array.isArray(values) ? values : []).map(String).map(key => {
+      const separator = key.indexOf("|");
+      if (separator < 0) return key;
+      return `${key.slice(0, separator)}|${baseCourse(key.slice(separator + 1))}`;
+    }))];
+
+    const customNames = {};
+    if (saved.customNames && typeof saved.customNames === "object") {
+      Object.entries(saved.customNames).forEach(([key, value]) => {
+        const separator = key.indexOf("|");
+        const normalizedKey = separator < 0 ? key : `${key.slice(0, separator)}|${baseCourse(key.slice(separator + 1))}`;
+        if (!(normalizedKey in customNames)) customNames[normalizedKey] = value;
+      });
+    }
+
+    return {
+      ...saved,
+      entries: [...uniqueEntries.values()],
+      selected: normalizeKeys(saved.selected).filter(key => uniqueEntries.has(key)),
+      currentClasses: normalizeKeys(saved.currentClasses).filter(key => uniqueEntries.has(key)),
+      customNames
+    };
+  }
+
+  async function cleanMainStorage() {
+    try {
+      const result = await chrome.storage.local.get(MAIN_STORAGE_KEY);
+      const saved = result[MAIN_STORAGE_KEY];
+      if (!saved || typeof saved !== "object") return;
+
+      const cleaned = dedupeMainState(saved);
+      const changed = JSON.stringify(saved) !== JSON.stringify(cleaned);
+      if (changed) await chrome.storage.local.set({ [MAIN_STORAGE_KEY]: cleaned });
+    } catch (error) {
+      console.warn("Panopto Course Filter: could not clean course state.", error);
+    }
+  }
+
+  function dedupeRenderedRows() {
+    const panel = document.querySelector("#pcf-panel");
+    if (!panel) return;
+
+    panel.querySelectorAll(".pcf-semester-courses").forEach(group => {
+      const seen = new Set();
+      group.querySelectorAll(":scope > .pcf-course-row").forEach(row => {
+        const entry = rowEntry(row);
+        if (!entry) return;
+        if (seen.has(entry.key)) row.remove();
+        else seen.add(entry.key);
+      });
+    });
+  }
+
   async function loadState() {
     try {
       const result = await chrome.storage.local.get([STORAGE_KEY, ...LEGACY_KEYS]);
-      const saved = result[STORAGE_KEY] || result.panoptoCourseFilterFixesV5 || result.panoptoCourseFilterFixesV4 || result.panoptoCourseFilterFixesV3 || result.panoptoCourseFilterFixesV2 || result.panoptoCourseFilterFixesV1 || {};
+      const saved = result[STORAGE_KEY] || result.panoptoCourseFilterFixesV6 || result.panoptoCourseFilterFixesV5 || result.panoptoCourseFilterFixesV4 || result.panoptoCourseFilterFixesV3 || result.panoptoCourseFilterFixesV2 || result.panoptoCourseFilterFixesV1 || {};
       state.mode = saved.mode === "selected" ? "selected" : "ignore";
       state.ignored = Array.isArray(saved.ignored) ? [...new Set(saved.ignored.map(String))] : [];
       state.ignored = state.ignored.map(key => {
@@ -242,7 +318,6 @@
       panel.insertBefore(controls, list);
     }
 
-    /* These are CLASS selectors, not IDs. Search is the only ID here. */
     const selectors = [
       "#pcf-search",
       ".pcf-global-buttons",
@@ -363,6 +438,7 @@
       setupQuickControls();
       setupIgnoreEvents();
       addIgnoreButtons();
+      dedupeRenderedRows();
       updateModeUI();
       scheduleFilter();
     } finally {
@@ -371,15 +447,36 @@
   }
 
   async function init() {
+    await cleanMainStorage();
     await loadState();
     tick();
 
-    observer = new MutationObserver(() => {
-      clearTimeout(uiTimer);
-      uiTimer = setTimeout(tick, 100);
+    observer = new MutationObserver(mutations => {
+      let panoptoChanged = false;
+
+      for (const mutation of mutations) {
+        if (mutation.type !== "childList") continue;
+
+        const target = mutation.target;
+        if (target && target.closest && target.closest("#pcf-panel")) continue;
+
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType !== Node.ELEMENT_NODE) continue;
+          if (node.id === "pcf-panel" || (node.closest && node.closest("#pcf-panel"))) continue;
+          panoptoChanged = true;
+          break;
+        }
+
+        if (panoptoChanged) break;
+      }
+
+      if (panoptoChanged) {
+        clearTimeout(uiTimer);
+        uiTimer = setTimeout(tick, 100);
+      }
     });
+
     observer.observe(document.body, { childList: true, subtree: true });
-    window.addEventListener("load", tick, { once: true });
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
