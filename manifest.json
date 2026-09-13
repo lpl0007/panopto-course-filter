@@ -6,7 +6,7 @@
   "content_scripts": [
     {
       "matches": ["https://auburn.hosted.panopto.com/*"],
-      "js": ["content.js", "content-fixes.js", "course-discovery-v3.js", "course-list-fix.js", "crosslisted-fix.js", "semester-ignore.js"],
+      "js": ["content.js", "content-fixes.js", "course-discovery-v4.js", "course-list-fix.js", "crosslisted-fix.js", "semester-ignore.js"],
       "css": ["styles.css", "settings.css", "semester-ignore.css"],
       "run_at": "document_idle"
     }
