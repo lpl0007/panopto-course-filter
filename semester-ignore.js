@@ -83,24 +83,31 @@
     for (const button of buttons) {
       if (!button.isConnected) continue;
       button.click();
-      await new Promise(resolve => setTimeout(resolve, 15));
+      await new Promise(resolve => setTimeout(resolve, 20));
     }
   }
 
   async function ignoreSemester(semester, group) {
     if (running) return;
     running = true;
-    const added = new Set(state.ignored[semester] || []);
+
+    // IMPORTANT: let the normal course-ignore handler add each key first.
+    // The previous implementation wrote the semester keys before clicking the
+    // course buttons, causing each course click to immediately remove its key.
     const buttons = courseRows(group)
       .map(row => row.querySelector(".pcf-ignore-fix"))
       .filter(button => button && button.textContent.trim() === "🚫");
+    const added = buttons
+      .map(button => button.dataset.courseKey)
+      .filter(Boolean);
 
-    buttons.forEach(button => {
-      if (button.dataset.courseKey) added.add(button.dataset.courseKey);
-    });
-    state.ignored[semester] = [...added];
-    saveState();
     await clickButtons(buttons);
+
+    state.ignored[semester] = [...new Set([
+      ...(state.ignored[semester] || []),
+      ...added
+    ])];
+    saveState();
     running = false;
     ensureButtons();
   }
