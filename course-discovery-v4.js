@@ -23,12 +23,7 @@
     const term = `${semester.term[0].toUpperCase()}${semester.term.slice(1).toLowerCase()}`;
     const course = `${subject}-${number}`;
     const key = `${term} ${semester.year}|${course}`;
-    found.set(key, {
-      key,
-      term,
-      year: semester.year,
-      course
-    });
+    found.set(key, { key, term, year: semester.year, course });
   }
 
   function extractCoursePairs(text) {
@@ -48,12 +43,9 @@
     while ((match = STANDARD_RE.exec(normalized))) {
       const subject = match[1].toUpperCase();
       if (BAD_SUBJECTS.has(subject)) continue;
-
-      // A cross-listed label has already supplied both course numbers.
       const before = normalized.slice(0, match.index);
       const after = normalized.slice(match.index + match[0].length);
       if (/\/\s*\d{3,5}/.test(after) || /\d{3,5}\s*\/\s*$/.test(before)) continue;
-
       courses.push([subject, match[2]]);
     }
 
@@ -67,18 +59,15 @@
     const semester = semesterOf(normalized);
     if (!semester) return;
 
-    // A real Browse folder label contains the semester and its own course code.
-    // Do not inherit a semester from a large parent container: that was the source
-    // of false associations such as BUAL-2650 appearing under Spring 2026.
+    // Never inherit a semester from a large parent container. The old scanner
+    // did that and created false associations between unrelated Browse folders.
     const termCount = (normalized.match(/\b(Fall|Spring|Summer)\s+\d{4}\b/gi) || []).length;
     if (termCount !== 1) return;
 
     const courses = extractCoursePairs(normalized);
     if (!courses.length || courses.length > 2) return;
 
-    for (const [subject, number] of courses) {
-      add(found, semester, subject, number);
-    }
+    for (const [subject, number] of courses) add(found, semester, subject, number);
   }
 
   function scanPairText(text, found) {
@@ -101,10 +90,8 @@
 
     for (const element of document.querySelectorAll(selectors)) {
       if (element.closest?.("#pcf-panel")) continue;
-
       const text = normalize(element.innerText || element.textContent);
       if (text.length < 8 || text.length > 350) continue;
-
       extractFromText(text, found);
       scanPairText(text, found);
     }
@@ -120,11 +107,9 @@
       entries.push(item);
     }
 
-    const normalizeKeys = values => [...new Set(
-      (Array.isArray(values) ? values : [])
-        .map(String)
-        .filter(key => validKeys.has(key))
-    )];
+    // Keep selection/current-class preferences while the Browse page is still
+    // loading. Entries that are no longer valid simply have nothing to match.
+    const normalizeKeys = values => [...new Set(Array.isArray(values) ? values.map(String) : [])];
 
     return {
       ...saved,
@@ -148,8 +133,8 @@
       if (!found.size) return;
 
       // Accumulate only strictly identified Browse labels as Panopto loads them.
-      // Once we have at least one valid label, replace the polluted legacy list
-      // rather than merging old false semester associations back in.
+      // Replace the polluted legacy entry list instead of merging old false
+      // semester associations back into the new discovery results.
       for (const entry of found.values()) discovered.set(entry.key, entry);
 
       const validKeys = new Set(discovered.keys());
@@ -175,9 +160,7 @@
     run();
 
     const observer = new MutationObserver(mutations => {
-      if (mutations.some(m => m.type === "childList" && !m.target?.closest?.("#pcf-panel"))) {
-        schedule();
-      }
+      if (mutations.some(m => m.type === "childList" && !m.target?.closest?.("#pcf-panel"))) schedule();
     });
     observer.observe(document.body, { childList: true, subtree: true });
 
