@@ -65,13 +65,6 @@
     return [...cards];
   }
 
-  function clearAliasStyles() {
-    document.querySelectorAll(".pcf-alias-fix-hidden").forEach(card => {
-      card.classList.remove("pcf-alias-fix-hidden");
-      ["display", "visibility", "opacity", "pointer-events"].forEach(prop => card.style.removeProperty(prop));
-    });
-  }
-
   function hide(card) {
     card.classList.add("pcf-alias-fix-hidden");
     card.style.setProperty("display", "none", "important");
@@ -120,8 +113,6 @@
 
       if (ignoreMode && ignored.has(matchedSharedKey)) {
         hide(card);
-      } else if (enabled && !ignoreMode && selected.length > 0 && selected.has(matchedSharedKey)) {
-        show(card);
       } else {
         show(card);
       }
