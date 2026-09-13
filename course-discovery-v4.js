@@ -15,15 +15,8 @@
     return match ? { term: match[1], year: match[2] } : null;
   }
 
-  function add(found, semester, subject, number) {
-    subject = String(subject || "").toUpperCase();
-    number = String(number || "");
-    if (!semester || !number || BAD_SUBJECTS.has(subject)) return;
-
-    const term = `${semester.term[0].toUpperCase()}${semester.term.slice(1).toLowerCase()}`;
-    const course = `${subject}-${number}`;
-    const key = `${term} ${semester.year}|${course}`;
-    found.set(key, { key, term, year: semester.year, course });
+  function canonicalTerm(semester) {
+    return `${semester.term[0].toUpperCase()}${semester.term.slice(1).toLowerCase()} ${semester.year}`;
   }
 
   function extractCoursePairs(text) {
@@ -49,7 +42,37 @@
       courses.push([subject, match[2]]);
     }
 
-    return [...new Map(courses.map(([subject, number]) => [`${subject}-${number}`, [subject, number]])).values()];
+    const unique = new Map();
+    courses.forEach(([subject, number]) => unique.set(`${subject}-${number}`, [subject, number]));
+    return [...unique.values()];
+  }
+
+  function addGroup(found, semester, courses) {
+    if (!semester || !courses.length || courses.length > 2) return;
+
+    const unique = [...new Map(courses.map(([subject, number]) => [
+      `${subject}-${number}`,
+      [subject, number]
+    ])).values()];
+
+    if (!unique.length) return;
+
+    const term = canonicalTerm(semester);
+    const aliases = unique.map(([subject, number]) => `${subject}-${number}`);
+    const primaryCourse = aliases[0];
+    const displayCourse = aliases.length === 1
+      ? primaryCourse
+      : aliases.join(" / ");
+    const key = `${term}|${primaryCourse}`;
+
+    found.set(key, {
+      key,
+      term: term.split(" ")[0],
+      year: term.split(" ")[1],
+      course: primaryCourse,
+      aliases,
+      displayCourse
+    });
   }
 
   function extractFromText(text, found) {
@@ -59,15 +82,13 @@
     const semester = semesterOf(normalized);
     if (!semester) return;
 
-    // Never inherit a semester from a large parent container. The old scanner
-    // did that and created false associations between unrelated Browse folders.
     const termCount = (normalized.match(/\b(Fall|Spring|Summer)\s+\d{4}\b/gi) || []).length;
     if (termCount !== 1) return;
 
     const courses = extractCoursePairs(normalized);
     if (!courses.length || courses.length > 2) return;
 
-    for (const [subject, number] of courses) add(found, semester, subject, number);
+    addGroup(found, semester, courses);
   }
 
   function scanPairText(text, found) {
@@ -79,9 +100,7 @@
     let match;
     while ((match = PAREN_RE.exec(normalized))) {
       const courses = extractCoursePairs(match[1]);
-      if (courses.length === 2) {
-        for (const [subject, number] of courses) add(found, semester, subject, number);
-      }
+      if (courses.length === 2) addGroup(found, semester, courses);
     }
   }
 
@@ -90,8 +109,10 @@
 
     for (const element of document.querySelectorAll(selectors)) {
       if (element.closest?.("#pcf-panel")) continue;
+
       const text = normalize(element.innerText || element.textContent);
       if (text.length < 8 || text.length > 350) continue;
+
       extractFromText(text, found);
       scanPairText(text, found);
     }
@@ -107,15 +128,23 @@
       entries.push(item);
     }
 
-    // Keep selection/current-class preferences while the Browse page is still
-    // loading. Entries that are no longer valid simply have nothing to match.
     const normalizeKeys = values => [...new Set(Array.isArray(values) ? values.map(String) : [])];
+    const customNames = saved.customNames && typeof saved.customNames === "object"
+      ? { ...saved.customNames }
+      : {};
+
+    for (const entry of entries) {
+      if (entry.displayCourse && entry.displayCourse !== entry.course && !customNames[entry.key]) {
+        customNames[entry.key] = entry.displayCourse;
+      }
+    }
 
     return {
       ...saved,
       entries,
       selected: normalizeKeys(saved.selected),
-      currentClasses: normalizeKeys(saved.currentClasses)
+      currentClasses: normalizeKeys(saved.currentClasses),
+      customNames
     };
   }
 
@@ -132,9 +161,6 @@
       scan(found);
       if (!found.size) return;
 
-      // Accumulate only strictly identified Browse labels as Panopto loads them.
-      // Replace the polluted legacy entry list instead of merging old false
-      // semester associations back into the new discovery results.
       for (const entry of found.values()) discovered.set(entry.key, entry);
 
       const validKeys = new Set(discovered.keys());
@@ -146,7 +172,7 @@
       }
     } catch (error) {
       if (!/Extension context invalidated/i.test(String(error?.message || error))) {
-        console.warn("Panopto Course Filter: strict course discovery failed.", error);
+        console.warn("Panopto Course Filter: grouped course discovery failed.", error);
       }
     }
   }
